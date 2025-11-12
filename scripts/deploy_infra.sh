@@ -45,19 +45,25 @@ echo " Azure Subscription Deployment Script"
 echo "----------------------------------------------"
 
 # --- SELECT AZURE CLOUD ---
-echo "Select your Azure environment:"
-select CLOUD_ENV in "AzureCloud" "AzureUSGovernment"; do
-  case $CLOUD_ENV in
-    AzureCloud|AzureUSGovernment)
-      echo "Setting Azure cloud to: $CLOUD_ENV"
-      az cloud set --name "$CLOUD_ENV"
-      break
-      ;;
-    *)
-      echo "Invalid selection. Please choose 1 or 2."
-      ;;
-  esac
-done
+if [[ -n "$CLOUD_ENV" ]]; then
+  echo "Using existing Azure environment: $CLOUD_ENV"
+  az cloud set --name "$CLOUD_ENV"
+else
+  echo "Select your Azure environment:"
+  select CLOUD_ENV in "AzureCloud" "AzureUSGovernment"; do
+    case $CLOUD_ENV in
+      AzureCloud|AzureUSGovernment)
+        echo "Setting Azure cloud to: $CLOUD_ENV"
+        az cloud set --name "$CLOUD_ENV"
+        break
+        ;;
+      *)
+        echo "Invalid selection. Please choose 1 or 2."
+        ;;
+    esac
+  done
+  set_variable "CLOUD_ENV" "$CLOUD_ENV"
+fi
 echo
 
 # --- LOGIN CHECK ---
@@ -80,13 +86,13 @@ echo "Available Azure regions:"
 az account list-locations --query "sort_by([].{Name:name, DisplayName:displayName}, &Name)" -o table
 echo
 
-LOCATION=$(set_variable "Enter the Azure region for deployment (e.g., eastus, westus or usgovirginia): " "LOCATION")
+LOCATION=$(prompt_variable "Enter the Azure region for deployment (e.g., eastus, westus or usgovirginia): " "LOCATION")
 echo "Selected location: $LOCATION"
 echo
 
 # --- CREATE OR USE EXISTING RESOURCE GROUP ---
 while true; do
-  CREATE_RG=$(set_variable "Do you want to create a new Resource Group for shared services, KV, Storage, UAMI? (y/n): " "CREATE_RG")
+  CREATE_RG=$(prompt_variable "Do you want to create a new Resource Group for shared services, KV, Storage, UAMI? (y/n): " "CREATE_RG")
   # normalize to single lowercase char, trim whitespace
   CREATE_RG=$(echo "$CREATE_RG" | tr '[:upper:]' '[:lower:]')           # convert to lowercase
   CREATE_RG="${CREATE_RG%%+([[:space:]])}" # no-op if no extglob; safe fallback
@@ -100,7 +106,7 @@ done
 
   if [[ "$CREATE_RG" == "y" ]]; then
     echo
-    RESOURCE_GROUP=$(set_variable "Enter new Resource Group name (e.g., myresourcegroup-rg): " "RESOURCE_GROUP")
+    RESOURCE_GROUP=$(prompt_variable "Enter new Resource Group name (e.g., myresourcegroup-rg): " "RESOURCE_GROUP")
 
   echo "Creating resource group '$RESOURCE_GROUP' in '$LOCATION'..."
   az group create -n "$RESOURCE_GROUP" -l "$LOCATION" >/dev/null
@@ -108,7 +114,7 @@ done
 
     else
       echo
-      RESOURCE_GROUP=$(set_variable "Enter existing Resource Group name where your KV, Storage Account and UAMI exist: " "RESOURCE_GROUP")
+      RESOURCE_GROUP=$(prompt_variable "Enter existing Resource Group name where your KV, Storage Account and UAMI exist: " "RESOURCE_GROUP")
     fi
 
     if ! az group show -n "$RESOURCE_GROUP" &>/dev/null; then
@@ -120,12 +126,12 @@ done
   echo "✅ Using existing Resource Group: $RESOURCE_GROUP (location: $LOCATION)"
 
 # --- DEPLOY OR USE EXISTING KEY VAULT + STORAGE ACCOUNT ---
-CREATE_PREDEPLOY=$(set_variable "Do you want to deploy a Key Vault and Storage Account before the ARM template? (y/n): " "CREATE_PREDEPLOY")
+CREATE_PREDEPLOY=$(prompt_variable "Do you want to deploy a Key Vault and Storage Account before the ARM template? (y/n): " "CREATE_PREDEPLOY")
 
 if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
   echo
-  KV_NAME=$(set_variable "Enter Key Vault name (must be globally unique): " "KV_NAME")
-  SA_NAME=$(set_variable "Enter Storage Account name (must be globally unique, 3-24 lowercase letters/numbers): " "SA_NAME")
+  KV_NAME=$(prompt_variable "Enter Key Vault name (must be globally unique): " "KV_NAME")
+  SA_NAME=$(prompt_variable "Enter Storage Account name (must be globally unique, 3-24 lowercase letters/numbers): " "SA_NAME")
 
   # Append it to the KV name (make sure to stay under Azure's 24-char limit for KV names)
   KV_NAME="${KV_NAME}${RAND_SUFFIX}"
@@ -161,8 +167,8 @@ else
   echo "You will need to provide existing resource names."
 
   # --- PROMPT FOR EXISTING RESOURCES ---
-  KV_NAME=$(set_variable "Enter existing Key Vault name: " "KV_NAME")
-  SA_NAME=$(set_variable "Enter existing Storage Account name: " "SA_NAME")
+  KV_NAME=$(prompt_variable "Enter existing Key Vault name: " "KV_NAME")
+  SA_NAME=$(prompt_variable "Enter existing Storage Account name: " "SA_NAME")
   
   # --- VALIDATE EXISTENCE ---
   if ! az keyvault show -n "$KV_NAME" &>/dev/null; then
@@ -182,11 +188,11 @@ fi
   # --- CREATE USER-ASSIGNED MANAGED IDENTITY, ASSIGN ROLES ---
   echo
     # --- CREATE OR USE EXISTING USER-ASSIGNED MANAGED IDENTITY ---
-    CREATE_UAMI=$(set_variable "Do you want to create a new User-Assigned Managed Identity (UAMI)? (y/n): " "CREATE_UAMI")
+    CREATE_UAMI=$(prompt_variable "Do you want to create a new User-Assigned Managed Identity (UAMI)? (y/n): " "CREATE_UAMI")
 
     if [[ "$CREATE_UAMI" =~ ^[Yy]$ ]]; then
     echo
-    UAMI_NAME=$(set_variable "Enter a name for the new UAMI: " "UAMI_NAME")
+    UAMI_NAME=$(prompt_variable "Enter a name for the new UAMI: " "UAMI_NAME")
 
     echo "Creating User-Assigned Managed Identity '$UAMI_NAME'..."
     az identity create \
@@ -198,7 +204,7 @@ fi
     update_env_var "CREATE_UAMI" "n"
     else
     echo
-    UAMI_NAME=$(set_variable "Enter existing UAMI name: " "UAMI_NAME")
+    UAMI_NAME=$(prompt_variable "Enter existing UAMI name: " "UAMI_NAME")
 
     # Validate existence and get details
     if ! az identity show -n "$UAMI_NAME" -g "$RESOURCE_GROUP" &>/dev/null; then
@@ -291,7 +297,7 @@ fi
     CREATED_BY=$(az ad signed-in-user show --query displayName -o tsv)
     
     # Capture ProjectName from user
-    PROJECT_NAME=$(set_variable "Enter your project Name for this deployment, lower case, no spaces or special characters, min 5 characters: " "PROJECT_NAME")
+    PROJECT_NAME=$(prompt_variable "Enter your project Name for this deployment, lower case, no spaces or special characters, min 5 characters: " "PROJECT_NAME")
 
     # List all vNets in the subscription that are bound to the location specified
     echo "Existing vNets in location '$LOCATION':"
@@ -300,7 +306,7 @@ fi
     echo "$VNET_LIST"
 
     # vNet name for your AKS Private Cluster
-    existingVNETName=$(set_variable "Enter the name of your existing VNet (e.g., vnet1): " "existingVNETName")
+    existingVNETName=$(prompt_variable "Enter the name of your existing VNet (e.g., vnet1): " "existingVNETName")
 
     # Get vNet Resource Group name for your AKS Private Cluster
     existingVnetResourceGroup=$(az network vnet list --query "[?name=='$existingVNETName'].resourceGroup" -o tsv)
@@ -312,10 +318,10 @@ fi
     echo "$SUBNET_LIST"
 
     # Enter the IP Address prefix for the deployed subnet
-    SUBNET_PREFIX=$(set_variable "Enter the IP Address prefix for the new subnet (e.g., 10.0.0.0) the template will add a /27 to the appendix: " "SUBNET_PREFIX")
+    SUBNET_PREFIX=$(prompt_variable "Enter the IP Address prefix for the new subnet (e.g., 10.0.0.0) the template will add a /27 to the appendix: " "SUBNET_PREFIX")
 
     # Capture Admin User Name from user
-    ADMIN_NAME=$(set_variable "Enter an admin user name for the jumpbox (1-20 characters): " "ADMIN_NAME")
+    ADMIN_NAME=$(prompt_variable "Enter an admin user name for the jumpbox (1-20 characters): " "ADMIN_NAME")
 
     # Capture Admin Password from user
     read -rsp "Enter an admin password for the jumpbox (at least 12 characters): " ADMIN_PASSWORD
@@ -326,13 +332,13 @@ fi
     done
     
     # Enter the Entra group ID that will be used for AKS Admins
-    ADMIN_GROUP_ID=$(set_variable "Enter the Entra ID Group Object ID for AKS Admins (e.g., 558a10de-c70a-43fd-9400-0d56c0d49a2c): " "ADMIN_GROUP_ID")
+    ADMIN_GROUP_ID=$(prompt_variable "Enter the Entra ID Group Object ID for AKS Admins (e.g., 558a10de-c70a-43fd-9400-0d56c0d49a2c): " "ADMIN_GROUP_ID")
 
     # Enter the Cost Center tag value
-    COST_CENTER=$(set_variable "Enter your Cost Center (e.g., 12345, leave blank for n/a): " "COST_CENTER")
+    COST_CENTER=$(prompt_variable "Enter your Cost Center (e.g., 12345, leave blank for n/a): " "COST_CENTER")
 
     # Enter the Environment tag value
-    ENVIRONMENT=$(set_variable "Enter your Environment tag value (e.g., Dev, Test, Prod): " "ENVIRONMENT")
+    ENVIRONMENT=$(prompt_variable "Enter your Environment tag value (e.g., Dev, Test, Prod): " "ENVIRONMENT")
     ENVIRONMENT=${ENVIRONMENT:-n/a}
     echo "ENVIRONMENT set to: $ENVIRONMENT"
 
@@ -370,7 +376,7 @@ fi
   fi
 
 # --- GET TEMPLATE INFO ---
-TEMPLATE_FILE=$(set_variable "Enter full path to ARM template file (.json): " "TEMPLATE_FILE")
+TEMPLATE_FILE=$(prompt_variable "Enter full path to ARM template file (.json): " "TEMPLATE_FILE")
 read -rp "Enter full path to parameters file (.json) [Press Enter to skip, if you skip we will create based on your input]: " PARAM_FILE
 if [[ -n "$PARAM_FILE" && ! -f "$PARAM_FILE" ]]; then
   echo "⚠️ Parameter file not found. Ignoring and deploying without parameters."

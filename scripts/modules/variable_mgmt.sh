@@ -1,6 +1,21 @@
 ENV_FILE_NAME="./.temp.infra.env"
 
 set_variable() {
+    VARIABLE_NAME=$1
+    VARIABLE_VALUE=$2
+
+    # Check if variable is already set in environment
+    eval "EXISTING_VALUE=\${$VARIABLE_NAME}"
+    if [ -n "$EXISTING_VALUE" ]; then
+        echo "$EXISTING_VALUE"
+        return 0
+    fi
+
+    echo "$VARIABLE_NAME=$VARIABLE_VALUE" >> "$ENV_FILE_NAME"
+    echo "$VARIABLE_VALUE"
+}
+
+prompt_variable() {
     INPUT_PROMPT=$1
     VARIABLE_NAME=$2
 
