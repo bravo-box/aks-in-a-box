@@ -51,6 +51,7 @@ These tasks can be done either through cli, powershell, vscode task or the porta
 - **Login to Azure Commercial** - Performs an az login against azure commercial.
 - **Login to Azure Government** - Performs an az login against azure government.
 - **Deploy Infrastructure** - Runs the `deploy_infra.sh` script to provision all required Azure resources including Resource Group, Key Vault, Storage Account, and User Assigned Managed Identity
+- **Create Virtual Network** - Runs the 'create_vnet.sh' script to provision a virtual network and bastion instance.
 
 ### Running Tasks
 To execute any task:
@@ -65,8 +66,8 @@ The deploy_infra.sh can create a Resource Group for the prerequisites, Key Vault
 Should you decide to use the bash file (recommended approach):
 
 ```bash
-chmod +x deploy_infra.sh
-./deploy_infra.sh
+chmod +x ./scripts/deploy_infra.sh
+./scripts/deploy_infra.sh
 ```
 
 You will be prompted for the following, you can chose not to deploy the RG, KV, Storage Account and UAMI. You will need to provide details of them and they will need to be in the same resource group.
