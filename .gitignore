@@ -1,3 +1,4 @@
 .temp.infra.env
 temp.infra.env
 infra.parameters.json
+/logs/*
