@@ -17,14 +17,19 @@ set -e
 
 # --- SOURCE MODULES ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODULE_FILE="${SCRIPT_DIR}/modules/variable_mgmt.sh"
-
-if [[ ! -f "$MODULE_FILE" ]]; then
-  echo "❌ Error: Required module not found: $MODULE_FILE"
+VARIABLE_MODULE_FILE="${SCRIPT_DIR}/modules/variable_mgmt.sh"
+LOG_MODULE_FILE="${SCRIPT_DIR}/modules/logging.sh"
+if [[ ! -f "$VARIABLE_MODULE_FILE" ]]; then
+  echo "❌ Error: Required module not found: $VARIABLE_MODULE_FILE"
   exit 1
 fi
 
-source "$MODULE_FILE"
+if [[ ! -f "$LOG_MODULE_FILE" ]]; then
+  echo "❌ Error: Required module not found: $LOG_MODULE_FILE"
+  exit 1
+fi
+source "$VARIABLE_MODULE_FILE"
+source "$LOG_MODULE_FILE"
 
 load_env
 
