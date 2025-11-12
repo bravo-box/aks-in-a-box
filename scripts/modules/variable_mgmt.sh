@@ -53,6 +53,46 @@ prompt_variable() {
 
     echo "$VARIABLE_VALUE"
 }
+
+prompt_y_or_n() {
+    INPUT_PROMPT=$1
+    VARIABLE_NAME=$2
+
+    if [ -z "$INPUT_PROMPT" ]; then
+        echo "error prompt_y_or_n: No Input Prompt for Variable passed" >&2
+        return 1
+    fi
+
+    if [ -z "$VARIABLE_NAME" ]; then
+        echo "error prompt_y_or_n: No Variable name provided" >&2
+        return 1
+    fi
+
+    # Check if variable is already set in environment
+    eval "EXISTING_VALUE=\${$VARIABLE_NAME}"
+    if [ -n "$EXISTING_VALUE" ]; then
+        echo "$EXISTING_VALUE"
+        return 0
+    fi
+
+    if [ ! -f "$ENV_FILE_NAME" ]; then
+        touch "$ENV_FILE_NAME"
+        if [ $? -ne 0 ]; then
+            echo "error prompt_y_or_n: Failed to create env file: $ENV_FILE_NAME" >&2
+            return 1
+        fi
+    fi
+
+    read -rp "$INPUT_PROMPT" VARIABLE_VALUE
+    while [[ "$VARIABLE_VALUE" != "y" && "$VARIABLE_VALUE" != "Y" && "$VARIABLE_VALUE" != "n" && "$VARIABLE_VALUE" != "N" ]]; do
+        read -rp "Invalid response. Please enter 'y' or 'n': " VARIABLE_VALUE
+    done
+
+    echo "$VARIABLE_NAME=$VARIABLE_VALUE" >> "$ENV_FILE_NAME"
+
+    echo "$VARIABLE_VALUE"
+}
+
 load_env() {
     if [ -f "$ENV_FILE_NAME" ]; then
         while true; do

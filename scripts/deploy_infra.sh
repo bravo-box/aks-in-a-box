@@ -92,7 +92,7 @@ echo
 
 # --- CREATE OR USE EXISTING RESOURCE GROUP ---
 while true; do
-  CREATE_RG=$(prompt_variable "Do you want to create a new Resource Group for shared services, KV, Storage, UAMI? (y/n): " "CREATE_RG")
+  CREATE_RG=$(prompt_y_or_n "Do you want to create a new Resource Group for shared services, KV, Storage, UAMI? (y/n): " "CREATE_RG")
   # normalize to single lowercase char, trim whitespace
   CREATE_RG=$(echo "$CREATE_RG" | tr '[:upper:]' '[:lower:]')           # convert to lowercase
   CREATE_RG="${CREATE_RG%%+([[:space:]])}" # no-op if no extglob; safe fallback
@@ -126,7 +126,7 @@ done
   echo "✅ Using existing Resource Group: $RESOURCE_GROUP (location: $LOCATION)"
 
 # --- DEPLOY OR USE EXISTING KEY VAULT + STORAGE ACCOUNT ---
-CREATE_PREDEPLOY=$(prompt_variable "Do you want to deploy a Key Vault and Storage Account before the ARM template? (y/n): " "CREATE_PREDEPLOY")
+CREATE_PREDEPLOY=$(prompt_y_or_n "Do you want to deploy a Key Vault and Storage Account before the ARM template? (y/n): " "CREATE_PREDEPLOY")
 
 if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
   echo
@@ -188,7 +188,7 @@ fi
   # --- CREATE USER-ASSIGNED MANAGED IDENTITY, ASSIGN ROLES ---
   echo
     # --- CREATE OR USE EXISTING USER-ASSIGNED MANAGED IDENTITY ---
-    CREATE_UAMI=$(prompt_variable "Do you want to create a new User-Assigned Managed Identity (UAMI)? (y/n): " "CREATE_UAMI")
+    CREATE_UAMI=$(prompt_y_or_n "Do you want to create a new User-Assigned Managed Identity (UAMI)? (y/n): " "CREATE_UAMI")
 
     if [[ "$CREATE_UAMI" =~ ^[Yy]$ ]]; then
     echo
@@ -383,7 +383,7 @@ if [[ -n "$PARAM_FILE" && ! -f "$PARAM_FILE" ]]; then
   PARAM_FILE=""
 fi
 
-read -rp "Enter a name for this deployment [Press Enter for default]: " DEPLOYMENT_NAME
+DEPLOYMENT_NAME=$(prompt_variable "Enter a name for this deployment [Press Enter for default]: " "DEPLOYMENT_NAME")
 DEPLOYMENT_NAME=${DEPLOYMENT_NAME:-sub-deploy-$(date +%Y%m%d%H%M%S)}
 
 # --- SUMMARY ---
