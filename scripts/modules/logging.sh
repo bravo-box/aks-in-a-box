@@ -65,11 +65,11 @@ log_info() {
 }
 
 log_success() {
-    log "$1" "$COLOR_GREEN"
+    log "✓ $1" "$COLOR_GREEN"
 }
 
 log_failure() {
-    log "$1" "$COLOR_RED"
+    log "❌ $1" "$COLOR_RED"
 }
 
 log_error() {
