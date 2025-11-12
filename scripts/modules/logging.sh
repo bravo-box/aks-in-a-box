@@ -19,7 +19,13 @@ LOG_FILE=""
 init_log_file() {
     local script_name=$(basename "${BASH_SOURCE[-1]}" .sh)
     local timestamp=$(date +"%m.%d.%Y.%H.%M.%S")
-    LOG_FILE="${script_name}-${timestamp}.log"
+    WORKING_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local log_dir="$WORKING_DIRECTORY/logs"
+
+    # Create logs directory if it doesn't exist
+    mkdir -p "$log_dir"
+    
+    LOG_FILE="${log_dir}/${script_name}-${timestamp}.log"
     
     # Create the log file with initial entry
     echo "Log started at $(date '+%Y-%m-%d %H:%M:%S')" > "$LOG_FILE"
