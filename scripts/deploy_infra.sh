@@ -31,6 +31,7 @@ fi
 source "$VARIABLE_MODULE_FILE"
 source "$LOG_MODULE_FILE"
 
+init_log_file
 load_env
 
 # --- DEFAULT VARIABLES ---
