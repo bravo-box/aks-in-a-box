@@ -19,6 +19,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIABLE_MODULE_FILE="${SCRIPT_DIR}/modules/variable_mgmt.sh"
 LOG_MODULE_FILE="${SCRIPT_DIR}/modules/logging.sh"
+COMMAND_MODULE_FILE="${SCRIPT_DIR}/modules/command.sh"
+
 if [[ ! -f "$VARIABLE_MODULE_FILE" ]]; then
   log_error "Required module not found: $VARIABLE_MODULE_FILE"
   exit 1
@@ -28,8 +30,14 @@ if [[ ! -f "$LOG_MODULE_FILE" ]]; then
   log_error "Required module not found: $LOG_MODULE_FILE"
   exit 1
 fi
+
+if [[ ! -f "$COMMAND_MODULE_FILE" ]]; then
+  log_error "Required module not found: $COMMAND_MODULE_FILE"
+  exit 1
+fi
 source "$VARIABLE_MODULE_FILE"
 source "$LOG_MODULE_FILE"
+source "$COMMAND_MODULE_FILE"
 
 init_log_file
 load_env
@@ -47,7 +55,7 @@ OPERATOR_TAG="${OPERATOR_IMAGE#*/}"  # Removes first part before first "/"
 log_heading " Azure Subscription Deployment Script"
 
 # --- SELECT AZURE CLOUD ---
-if [[ -z "$CLOUD_ENV" ]]; then
+if [[ -n "$CLOUD_ENV" ]]; then
   log_info "Using existing Azure environment: $CLOUD_ENV"
   az cloud set --name "$CLOUD_ENV"
 else
@@ -71,13 +79,16 @@ echo
 # --- LOGIN CHECK ---
 if ! az account show &>/dev/null; then
   log_info "You are not logged in. Launching az login..."
-  az login --use-device-code >/dev/null
+  if ! az login --use-device-code >/dev/null 2>&1; then
+    log_error "Azure login failed. Please check your credentials and try again."
+    exit 1
+  fi
   log_success "Login successful."
 fi
 
 # --- GET CURRENT SUBSCRIPTION ---
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-SUBSCRIPTION_NAME=$(az account show --query name -o tsv)
+SUBSCRIPTION_ID=$(run_az_command "az account show --query id -o tsv" "Failed to get subscription ID")
+SUBSCRIPTION_NAME=$(run_az_command "az account show --query name -o tsv" "Failed to get subscription name")
 log_info "Using current subscription:"
 log_info "  Name: $SUBSCRIPTION_NAME"
 log_info "  ID:   $SUBSCRIPTION_ID"
@@ -111,7 +122,7 @@ done
     RESOURCE_GROUP=$(prompt_variable "Enter new Resource Group name (e.g., myresourcegroup-rg): " "RESOURCE_GROUP")
 
   log_info "Creating resource group '$RESOURCE_GROUP' in '$LOCATION'..."
-  az group create -n "$RESOURCE_GROUP" -l "$LOCATION" >/dev/null
+  run_az_command "az group create -n '$RESOURCE_GROUP' -l '$LOCATION'" "Failed to create resource group '$RESOURCE_GROUP'"
   log_success "Resource group created."
 
     else
@@ -124,7 +135,7 @@ done
       exit 1
     fi
 
-  LOCATION=$(az group show -n "$RESOURCE_GROUP" --query "location" -o tsv)
+  LOCATION=$(run_az_command "az group show -n '$RESOURCE_GROUP' --query 'location' -o tsv" "Failed to get location for resource group '$RESOURCE_GROUP'")
   log_success "Using existing Resource Group: $RESOURCE_GROUP (location: $LOCATION)"
 
 # --- DEPLOY OR USE EXISTING KEY VAULT + STORAGE ACCOUNT ---
@@ -139,24 +150,14 @@ if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
   KV_NAME="${KV_NAME}${RAND_SUFFIX}"
 
   log_info "Creating Key Vault '$KV_NAME'..."
-  az keyvault create \
-    -n "$KV_NAME" \
-    -g "$RESOURCE_GROUP" \
-    -l "$LOCATION" \
-    >/dev/null
+  run_az_command "az keyvault create -n '$KV_NAME' -g '$RESOURCE_GROUP' -l '$LOCATION'" "Failed to create Key Vault '$KV_NAME'"
   log_success "Key Vault created."
 
   # Append it to the SA name (make sure to stay under Azure's 24-char limit for SA names)
   SA_NAME="${SA_NAME}${RAND_SUFFIX}"
 
   log_info "Creating Storage Account '$SA_NAME'..."
-  az storage account create \
-    -n "$SA_NAME" \
-    -g "$RESOURCE_GROUP" \
-    -l "$LOCATION" \
-    --min-tls-version TLS1_2 \
-    --allow-blob-public-access false \
-    >/dev/null
+  run_az_command "az storage account create -n '$SA_NAME' -g '$RESOURCE_GROUP' -l '$LOCATION' --min-tls-version TLS1_2 --allow-blob-public-access false" "Failed to create Storage Account '$SA_NAME'"
   log_success "Storage Account created."
 
   update_env_var "KV_NAME" "$KV_NAME"
@@ -197,11 +198,7 @@ fi
     UAMI_NAME=$(prompt_variable "Enter a name for the new UAMI: " "UAMI_NAME")
 
     log_info "Creating User-Assigned Managed Identity '$UAMI_NAME'..."
-    az identity create \
-        -n "$UAMI_NAME" \
-        -g "$RESOURCE_GROUP" \
-        -l "$LOCATION" \
-        >/dev/null
+    run_az_command "az identity create -n '$UAMI_NAME' -g '$RESOURCE_GROUP' -l '$LOCATION'" "Failed to create UAMI '$UAMI_NAME'"
     log_success "UAMI '$UAMI_NAME' created."
     update_env_var "CREATE_UAMI" "n"
     else
@@ -218,23 +215,20 @@ fi
     fi
 
     # --- GET UAMI DETAILS ---
-    UAMI_ID=$(az identity show -n "$UAMI_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
-    UAMI_PRINCIPAL_ID=$(az identity show -n "$UAMI_NAME" -g "$RESOURCE_GROUP" --query principalId -o tsv)
+    UAMI_ID=$(run_az_command "az identity show -n '$UAMI_NAME' -g '$RESOURCE_GROUP' --query id -o tsv" "Failed to get UAMI resource ID")
+    UAMI_PRINCIPAL_ID=$(run_az_command "az identity show -n '$UAMI_NAME' -g '$RESOURCE_GROUP' --query principalId -o tsv" "Failed to get UAMI principal ID")
     log_info "  ↳ Resource ID:   $UAMI_ID"
     log_info "  ↳ Principal ID:  $UAMI_PRINCIPAL_ID"
 
     # --- GET RESOURCE IDs ---
-    STORAGE_ACCOUNT_ID=$(az storage account show -n "$SA_NAME" -g "$RESOURCE_GROUP" --query "id" -o tsv)
-    KEYVAULT_ID=$(az keyvault show -n "$KV_NAME" -g "$RESOURCE_GROUP" --query "id" -o tsv)
+    STORAGE_ACCOUNT_ID=$(run_az_command "az storage account show -n '$SA_NAME' -g '$RESOURCE_GROUP' --query 'id' -o tsv" "Failed to get Storage Account ID")
+    KEYVAULT_ID=$(run_az_command "az keyvault show -n '$KV_NAME' -g '$RESOURCE_GROUP' --query 'id' -o tsv" "Failed to get Key Vault ID")
 
     # Get your current user principal ID
-    DEPLOYER_PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv)
+    DEPLOYER_PRINCIPAL_ID=$(run_az_command "az ad signed-in-user show --query id -o tsv" "Failed to get current user principal ID")
 
     # Assign Key Vault Crypto Officer role to Key Vault management for current signed in user
-    az role assignment create \
-        --assignee "$DEPLOYER_PRINCIPAL_ID" \
-        --role "Key Vault Crypto Officer" \
-        --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KV_NAME"
+    run_az_command "az role assignment create --assignee '$DEPLOYER_PRINCIPAL_ID' --role 'Key Vault Crypto Officer' --scope '/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KV_NAME'" "Failed to assign Key Vault Crypto Officer role"
     
     # --- VALIDATE ROLE ASSIGNMENT ---
     log_info "Validating role assignment propagation...This can take up to 5 minutes."
@@ -268,35 +262,26 @@ fi
 
     log_info "Assigning roles to the UAMI..."
     # --- STORAGE ROLE ---
-    az role assignment create \
-      --assignee "$UAMI_PRINCIPAL_ID" \
-      --role "Storage Blob Data Reader" \
-      --scope "$STORAGE_ACCOUNT_ID" >/dev/null
+    run_az_command "az role assignment create --assignee '$UAMI_PRINCIPAL_ID' --role 'Storage Blob Data Reader' --scope '$STORAGE_ACCOUNT_ID'" "Failed to assign Storage Blob Data Reader role"
     log_success "Assigned 'Storage Blob Data Reader' on $SA_NAME"
 
     # --- KEY VAULT ROLES ---
     for role in "Key Vault Certificate User" "Key Vault Crypto User" "Key Vault Secrets User"; do
-      az role assignment create \
-        --assignee "$UAMI_PRINCIPAL_ID" \
-        --role "$role" \
-        --scope "$KEYVAULT_ID" >/dev/null
+      run_az_command "az role assignment create --assignee '$UAMI_PRINCIPAL_ID' --role '$role' --scope '$KEYVAULT_ID'" "Failed to assign '$role' role"
       log_success "Assigned '$role' on $KV_NAME"
     done
 
     # --- MANAGED IDENTITY OPERATOR ROLE ---
-    az role assignment create \
-      --assignee "$UAMI_PRINCIPAL_ID" \
-      --role "Managed Identity Operator" \
-      --scope "/subscriptions/$SUBSCRIPTION_ID" >/dev/null
+    run_az_command "az role assignment create --assignee '$UAMI_PRINCIPAL_ID' --role 'Managed Identity Operator' --scope '/subscriptions/$SUBSCRIPTION_ID'" "Failed to assign Managed Identity Operator role"
     log_success "Assigned 'Managed Identity Operator' at subscription level"
 
     # --- CREATE KEY IN KEYVAULT ---
     log_info "Creating Key 'aks-cmk' in Key Vault '$KV_NAME'..."
-    az keyvault key create --vault-name "$KV_NAME" -n aks-cmk >/dev/null
+    run_az_command "az keyvault key create --vault-name '$KV_NAME' -n aks-cmk" "Failed to create key 'aks-cmk' in Key Vault"
     log_success "Key 'aks-cmk' created in Key Vault '$KV_NAME'"
 
 # --- GET PARAMETERS FOR ARM TEMPLATE ---
-    CREATED_BY=$(az ad signed-in-user show --query displayName -o tsv)
+    CREATED_BY=$(run_az_command "az ad signed-in-user show --query displayName -o tsv" "Failed to get current user display name")
     
     # Capture ProjectName from user
     PROJECT_NAME=$(prompt_variable "Enter your project Name for this deployment, lower case, no spaces or special characters, min 5 characters: " "PROJECT_NAME")
@@ -311,7 +296,7 @@ fi
     existingVNETName=$(prompt_variable "Enter the name of your existing VNet (e.g., vnet1): " "existingVNETName")
 
     # Get vNet Resource Group name for your AKS Private Cluster
-    existingVnetResourceGroup=$(az network vnet list --query "[?name=='$existingVNETName'].resourceGroup" -o tsv)
+    existingVnetResourceGroup=$(run_az_command "az network vnet list --query \"[?name=='$existingVNETName'].resourceGroup\" -o tsv" "Failed to get vNet resource group")
     log_info "Using VNet Resource Group: $existingVnetResourceGroup"
 
     # Get the subnet list for the existing vNet
@@ -495,11 +480,7 @@ echo
 # --- DEPLOY ARM TEMPLATE USING GENERATED PARAMETERS FILE ---
 DEPLOYMENT_NAME="${PROJECT_NAME}-deploy-$(date +%Y%m%d%H%M)"
 log_info "Starting subscription-scope ARM deployment: $DEPLOYMENT_NAME"
-az deployment sub create \
-  --name "$DEPLOYMENT_NAME" \
-  --location "$LOCATION" \
-  --template-file "$TEMPLATE_FILE" \
-  --parameters @"$PARAM_FILE"
+run_az_command "az deployment sub create --name '$DEPLOYMENT_NAME' --location '$LOCATION' --template-file '$TEMPLATE_FILE' --parameters @'$PARAM_FILE'" "ARM template deployment failed"
 
 log_heading "✅ ARM deployment completed: $DEPLOYMENT_NAME"
 
@@ -507,73 +488,42 @@ log_heading "✅ ARM deployment completed: $DEPLOYMENT_NAME"
 log_info "Assigning network role to the UAMI for AKS Ingress deployments..."
     # --- NETWORK ROLE ---
     # Get subnet ID
-    SUBNET_ID=$(az network vnet subnet show \
-    -g "$existingVnetResourceGroup" \
-    --vnet-name "$existingVNETName" \
-    -n "${PROJECT_NAME}-aks-snet" \
-    --query "id" -o tsv)
+    SUBNET_ID=$(run_az_command "az network vnet subnet show -g '$existingVnetResourceGroup' --vnet-name '$existingVNETName' -n '${PROJECT_NAME}-aks-snet' --query 'id' -o tsv" "Failed to get subnet ID")
 
     # Assign role to the UAMI
-    az role assignment create \
-    --assignee "$UAMI_PRINCIPAL_ID" \
-    --role "Network Contributor" \
-    --scope "$SUBNET_ID"
-
-    log_heading "  ✅ Assigned 'Network Contributor' on $PROJECT_NAME-aks-snet"
+    run_az_command "az role assignment create --assignee '$UAMI_PRINCIPAL_ID' --role 'Network Contributor' --scope '$SUBNET_ID'" "Failed to assign Network Contributor role to subnet"
 
 # Assign ACR Pull role to UAMI for AKS ACR access
 log_info "Assigning ACR Pull role to the UAMI for AKS ACR access..."
     # --- ACR PULL ROLE ---
     # Get ACR name
-    ACR_NAME=$(az acr list -g "rg-$PROJECT_NAME" --query "[?starts_with(name, '${PROJECT_NAME}')].name" -o tsv)
-    ACR_ID=$(az acr show -n "$ACR_NAME" -g "rg-$PROJECT_NAME" --query "id" -o tsv)
+    ACR_NAME=$(run_az_command "az acr list -g 'rg-$PROJECT_NAME' --query \"[?starts_with(name, '${PROJECT_NAME}')].name\" -o tsv" "Failed to get ACR name")
+    ACR_ID=$(run_az_command "az acr show -n '$ACR_NAME' -g 'rg-$PROJECT_NAME' --query 'id' -o tsv" "Failed to get ACR ID")
 
     # Assign ACR Pull role to the UAMI
-    az role assignment create \
-    --assignee "$UAMI_PRINCIPAL_ID" \
-    --role "AcrPull" \
-    --scope "$ACR_ID"
-
-    log_heading "  ✅ Assigned 'AcrPull' on $ACR_NAME"
+    run_az_command "az role assignment create --assignee '$UAMI_PRINCIPAL_ID' --role 'AcrPull' --scope '$ACR_ID'" "Failed to assign AcrPull role to UAMI"
 
 # Assign ACR Push and Pull role for current signed in user
 log_info "Assigning ACR Push role to the current user for AKS ACR access..."
     # --- ACR PUSH ROLE ---
     # Get current user principal ID
-    CURRENT_USER_ID=$(az ad signed-in-user show --query id -o tsv)
+    CURRENT_USER_ID=$(run_az_command "az ad signed-in-user show --query id -o tsv" "Failed to get current user ID for ACR role assignment")
 
     # Assign ACR Push role to the current user
-    az role assignment create \
-      --assignee "$CURRENT_USER_ID" \
-      --role "AcrPush" \
-      --scope "$ACR_ID"
-
+    run_az_command "az role assignment create --assignee '$CURRENT_USER_ID' --role 'AcrPush' --scope '$ACR_ID'" "Failed to assign AcrPush role to current user"
     log_heading "  ✅ Assigned 'AcrPush' on $ACR_NAME to current user"
 
     # Assign ACR Pull role to the current user
-    az role assignment create \
-      --assignee "$CURRENT_USER_ID" \
-      --role "AcrPull" \
-      --scope "$ACR_ID"
-
+    run_az_command "az role assignment create --assignee '$CURRENT_USER_ID' --role 'AcrPull' --scope '$ACR_ID'" "Failed to assign AcrPull role to current user"
     log_heading "  ✅ Assigned 'AcrPull' on $ACR_NAME to current user"
 
 # ACR Push for Splunk Assets to Container Registry
 log_info "Pushing Splunk Operator container image to ACR..."
-    az acr import \
-      --name "$ACR_NAME" \
-      --source $OPERATOR_IMAGE \
-      --image $OPERATOR_TAG
-
+    run_az_command "az acr import --name '$ACR_NAME' --source $OPERATOR_IMAGE --image $OPERATOR_TAG" "Failed to import Splunk Operator image to ACR"
     log_heading "  ✅ Splunk Operator container image ($OPERATOR_IMAGE) pushed to ACR: $ACR_NAME"
 
 log_info "Pushing Splunk container image to ACR..."
-    az acr import \
-      --name "$ACR_NAME" \
-      --source $SPLUNK_IMAGE \
-      --image $SPLUNK_TAG
-
-    log_heading "  ✅ Splunk container image ($SPLUNK_IMAGE) pushed to ACR: $ACR_NAME"
+    run_az_command "az acr import --name '$ACR_NAME' --source $SPLUNK_IMAGE --image $SPLUNK_TAG" "Failed to import Splunk image to ACR"
 
 # Waiting for 30 seconds to ensure ACR replication and RBAC propagation
 log_info "Waiting 30 seconds..."
@@ -582,7 +532,7 @@ log_info "Done waiting."
 
 # Output of container images pushed
 log_heading "Container images in ACR '$ACR_NAME':"
-  CONTAINER_IMAGES=$(az acr repository list --name "$ACR_NAME" --output tsv)
+  CONTAINER_IMAGES=$(run_az_command "az acr repository list --name '$ACR_NAME' --output tsv" "Failed to list ACR repositories")
   echo "$CONTAINER_IMAGES"
 
 log_heading "✅ Deployment '$DEPLOYMENT_NAME' completed successfully at subscription scope."
