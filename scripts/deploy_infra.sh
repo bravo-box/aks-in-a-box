@@ -46,9 +46,7 @@ OPERATOR_TAG="${OPERATOR_IMAGE#*/}"  # Removes first part before first "/"
 
 
 
-echo "----------------------------------------------"
-echo " Azure Subscription Deployment Script"
-echo "----------------------------------------------"
+log_heading " Azure Subscription Deployment Script"
 
 # --- SELECT AZURE CLOUD ---
 if [[ -n "$CLOUD_ENV" ]]; then
@@ -394,9 +392,8 @@ DEPLOYMENT_NAME=${DEPLOYMENT_NAME:-sub-deploy-$(date +%Y%m%d%H%M%S)}
 
 # --- SUMMARY ---
 echo
-echo "----------------------------------------------"
-echo "Deployment Summary"
-echo "----------------------------------------------"
+log_heading "Deployment Summary"
+
 echo "Cloud Environment: $CLOUD_ENV"
 echo "Subscription:      $SUBSCRIPTION_NAME ($SUBSCRIPTION_ID)"
 echo "Location:          $LOCATION"
@@ -420,9 +417,7 @@ fi
 
 # --- GENERATE PARAMETERS FILE ---
 echo
-echo "----------------------------------------------"
-echo "📄 Generating ARM parameters file: 1_aks.parameters.json"
-echo "----------------------------------------------"
+log_heading "📄 Generating ARM parameters file: 1_aks.parameters.json"
 
 cat > infra.parameters.json <<EOF
 {
@@ -496,9 +491,7 @@ EOF
 
 PARAM_FILE="$(pwd)/infra.parameters.json"
 
-echo "----------------------------------------------"
-echo "✅ Parameters file created: $PARAM_FILE"
-echo "----------------------------------------------"
+log_heading "✅ Parameters file created: $PARAM_FILE"
 echo
 
 exit 1
@@ -512,9 +505,7 @@ az deployment sub create \
   --template-file "$TEMPLATE_FILE" \
   --parameters @"$PARAM_FILE"
 
-echo "----------------------------------------------"
-echo "✅ ARM deployment completed: $DEPLOYMENT_NAME"
-echo "----------------------------------------------"
+log_heading "✅ ARM deployment completed: $DEPLOYMENT_NAME"
 
 # Assign Network Contributor role to UAMI for AKS Ingress deployments
 echo "Assigning network role to the UAMI for AKS Ingress deployments..."
@@ -532,9 +523,7 @@ echo "Assigning network role to the UAMI for AKS Ingress deployments..."
     --role "Network Contributor" \
     --scope "$SUBNET_ID"
 
-    echo "----------------------------------------------"
-    echo "  ✅ Assigned 'Network Contributor' on $PROJECT_NAME-aks-snet"
-    echo "----------------------------------------------"
+    log_heading "  ✅ Assigned 'Network Contributor' on $PROJECT_NAME-aks-snet"
 
 # Assign ACR Pull role to UAMI for AKS ACR access
 echo "Assigning ACR Pull role to the UAMI for AKS ACR access..."
@@ -549,9 +538,7 @@ echo "Assigning ACR Pull role to the UAMI for AKS ACR access..."
     --role "AcrPull" \
     --scope "$ACR_ID"
 
-    echo "----------------------------------------------"
-    echo "  ✅ Assigned 'AcrPull' on $ACR_NAME"
-    echo "----------------------------------------------"
+    log_heading "  ✅ Assigned 'AcrPull' on $ACR_NAME"
 
 # Assign ACR Push and Pull role for current signed in user
 echo "Assigning ACR Push role to the current user for AKS ACR access..."
@@ -565,9 +552,7 @@ echo "Assigning ACR Push role to the current user for AKS ACR access..."
       --role "AcrPush" \
       --scope "$ACR_ID"
 
-    echo "----------------------------------------------"
-    echo "  ✅ Assigned 'AcrPush' on $ACR_NAME to current user"
-    echo "----------------------------------------------"
+    log_heading "  ✅ Assigned 'AcrPush' on $ACR_NAME to current user"
 
     # Assign ACR Pull role to the current user
     az role assignment create \
@@ -575,9 +560,7 @@ echo "Assigning ACR Push role to the current user for AKS ACR access..."
       --role "AcrPull" \
       --scope "$ACR_ID"
 
-    echo "----------------------------------------------"
-    echo "  ✅ Assigned 'AcrPull' on $ACR_NAME to current user"
-    echo "----------------------------------------------"
+    log_heading "  ✅ Assigned 'AcrPull' on $ACR_NAME to current user"
 
 # ACR Push for Splunk Assets to Container Registry
 echo "Pushing Splunk Operator container image to ACR..."
@@ -586,9 +569,7 @@ echo "Pushing Splunk Operator container image to ACR..."
       --source $OPERATOR_IMAGE \
       --image $OPERATOR_TAG
 
-    echo "----------------------------------------------"
-    echo "  ✅ Splunk Operator container image ($OPERATOR_IMAGE) pushed to ACR: $ACR_NAME"
-    echo "----------------------------------------------"
+    log_heading "  ✅ Splunk Operator container image ($OPERATOR_IMAGE) pushed to ACR: $ACR_NAME"
 
 echo "Pushing Splunk container image to ACR..."
     az acr import \
@@ -596,9 +577,7 @@ echo "Pushing Splunk container image to ACR..."
       --source $SPLUNK_IMAGE \
       --image $SPLUNK_TAG
 
-    echo "----------------------------------------------"
-    echo "  ✅ Splunk container image ($SPLUNK_IMAGE) pushed to ACR: $ACR_NAME"
-    echo "----------------------------------------------"
+    log_heading "  ✅ Splunk container image ($SPLUNK_IMAGE) pushed to ACR: $ACR_NAME"
 
 # Waiting for 30 seconds to ensure ACR replication and RBAC propagation
 echo "Waiting 30 seconds..."
@@ -606,12 +585,8 @@ sleep 30
 echo "Done waiting."
 
 # Output of container images pushed
-echo "----------------------------------------------"
-echo "Container images in ACR '$ACR_NAME':"
-echo "----------------------------------------------"
+log_heading "Container images in ACR '$ACR_NAME':"
   CONTAINER_IMAGES=$(az acr repository list --name "$ACR_NAME" --output tsv)
   echo "$CONTAINER_IMAGES"
 
-echo "----------------------------------------------"
-echo "✅ Deployment '$DEPLOYMENT_NAME' completed successfully at subscription scope."
-echo "----------------------------------------------"
+log_heading "✅ Deployment '$DEPLOYMENT_NAME' completed successfully at subscription scope."
