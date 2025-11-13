@@ -20,12 +20,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIABLE_MODULE_FILE="${SCRIPT_DIR}/modules/variable_mgmt.sh"
 LOG_MODULE_FILE="${SCRIPT_DIR}/modules/logging.sh"
 if [[ ! -f "$VARIABLE_MODULE_FILE" ]]; then
-  echo "❌ Error: Required module not found: $VARIABLE_MODULE_FILE"
+  log_error "Required module not found: $VARIABLE_MODULE_FILE"
   exit 1
 fi
 
 if [[ ! -f "$LOG_MODULE_FILE" ]]; then
-  echo "❌ Error: Required module not found: $LOG_MODULE_FILE"
+  log_error "Required module not found: $LOG_MODULE_FILE"
   exit 1
 fi
 source "$VARIABLE_MODULE_FILE"
@@ -44,25 +44,23 @@ RAND_SUFFIX=$(openssl rand -hex 5)
 SPLUNK_TAG="${SPLUNK_IMAGE#*/}"  # Removes first part before first "/"
 OPERATOR_TAG="${OPERATOR_IMAGE#*/}"  # Removes first part before first "/"
 
-
-
 log_heading " Azure Subscription Deployment Script"
 
 # --- SELECT AZURE CLOUD ---
-if [[ -n "$CLOUD_ENV" ]]; then
-  echo "Using existing Azure environment: $CLOUD_ENV"
+if [[ -z "$CLOUD_ENV" ]]; then
+  log_info "Using existing Azure environment: $CLOUD_ENV"
   az cloud set --name "$CLOUD_ENV"
 else
-  echo "Select your Azure environment:"
+  log_info "Select your Azure environment:"
   select CLOUD_ENV in "AzureCloud" "AzureUSGovernment"; do
     case $CLOUD_ENV in
       AzureCloud|AzureUSGovernment)
-        echo "Setting Azure cloud to: $CLOUD_ENV"
+        log_info "Setting Azure cloud to: $CLOUD_ENV"
         az cloud set --name "$CLOUD_ENV"
         break
         ;;
       *)
-        echo "Invalid selection. Please choose 1 or 2."
+        log_error "Invalid selection. Please choose 1 or 2."
         ;;
     esac
   done
@@ -72,26 +70,26 @@ echo
 
 # --- LOGIN CHECK ---
 if ! az account show &>/dev/null; then
-  echo "You are not logged in. Launching az login..."
+  log_info "You are not logged in. Launching az login..."
   az login --use-device-code >/dev/null
-  echo "✅ Login successful."
+  log_success "Login successful."
 fi
 
 # --- GET CURRENT SUBSCRIPTION ---
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 SUBSCRIPTION_NAME=$(az account show --query name -o tsv)
-echo "Using current subscription:"
-echo "  Name: $SUBSCRIPTION_NAME"
-echo "  ID:   $SUBSCRIPTION_ID"
+log_info "Using current subscription:"
+log_info "  Name: $SUBSCRIPTION_NAME"
+log_info "  ID:   $SUBSCRIPTION_ID"
 echo
 
 # --- SELECT LOCATION ---
-echo "Available Azure regions:"
+log_info "Available Azure regions:"
 az account list-locations --query "sort_by([].{Name:name, DisplayName:displayName}, &Name)" -o table
 echo
 
 LOCATION=$(prompt_variable "Enter the Azure region for deployment (e.g., eastus, westus or usgovirginia): " "LOCATION")
-echo "Selected location: $LOCATION"
+log_info "Selected location: $LOCATION"
 echo
 
 # --- CREATE OR USE EXISTING RESOURCE GROUP ---
@@ -104,7 +102,7 @@ while true; do
   if [[ "$CREATE_RG" =~ ^[yn]$ ]]; then
     break
   else
-    echo "Please answer 'y' or 'n'."
+    log_error "Please answer 'y' or 'n'."
   fi
 done
 
@@ -112,9 +110,9 @@ done
     echo
     RESOURCE_GROUP=$(prompt_variable "Enter new Resource Group name (e.g., myresourcegroup-rg): " "RESOURCE_GROUP")
 
-  echo "Creating resource group '$RESOURCE_GROUP' in '$LOCATION'..."
+  log_info "Creating resource group '$RESOURCE_GROUP' in '$LOCATION'..."
   az group create -n "$RESOURCE_GROUP" -l "$LOCATION" >/dev/null
-  echo "✅ Resource group created."
+  log_success "Resource group created."
 
     else
       echo
@@ -122,12 +120,12 @@ done
     fi
 
     if ! az group show -n "$RESOURCE_GROUP" &>/dev/null; then
-      echo "❌ Resource Group '$RESOURCE_GROUP' not found. Please verify and rerun the script."
+      log_error "Resource Group '$RESOURCE_GROUP' not found. Please verify and rerun the script."
       exit 1
     fi
 
   LOCATION=$(az group show -n "$RESOURCE_GROUP" --query "location" -o tsv)
-  echo "✅ Using existing Resource Group: $RESOURCE_GROUP (location: $LOCATION)"
+  log_success "Using existing Resource Group: $RESOURCE_GROUP (location: $LOCATION)"
 
 # --- DEPLOY OR USE EXISTING KEY VAULT + STORAGE ACCOUNT ---
 CREATE_PREDEPLOY=$(prompt_y_or_n "Do you want to deploy a Key Vault and Storage Account before the ARM template? (y/n): " "CREATE_PREDEPLOY")
@@ -140,18 +138,18 @@ if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
   # Append it to the KV name (make sure to stay under Azure's 24-char limit for KV names)
   KV_NAME="${KV_NAME}${RAND_SUFFIX}"
 
-  echo "Creating Key Vault '$KV_NAME'..."
+  log_info "Creating Key Vault '$KV_NAME'..."
   az keyvault create \
     -n "$KV_NAME" \
     -g "$RESOURCE_GROUP" \
     -l "$LOCATION" \
     >/dev/null
-  echo "✅ Key Vault created."
+  log_success "Key Vault created."
 
   # Append it to the SA name (make sure to stay under Azure's 24-char limit for SA names)
   SA_NAME="${SA_NAME}${RAND_SUFFIX}"
 
-  echo "Creating Storage Account '$SA_NAME'..."
+  log_info "Creating Storage Account '$SA_NAME'..."
   az storage account create \
     -n "$SA_NAME" \
     -g "$RESOURCE_GROUP" \
@@ -159,7 +157,7 @@ if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
     --min-tls-version TLS1_2 \
     --allow-blob-public-access false \
     >/dev/null
-  echo "✅ Storage Account created."
+  log_success "Storage Account created."
 
   update_env_var "KV_NAME" "$KV_NAME"
   update_env_var "SA_NAME" "$SA_NAME"
@@ -167,8 +165,8 @@ if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
 
 else
   echo
-  echo "ℹ️ Skipping deployment of new Key Vault and Storage Account."
-  echo "You will need to provide existing resource names."
+  log_info "ℹ️ Skipping deployment of new Key Vault and Storage Account."
+  log_info "You will need to provide existing resource names."
 
   # --- PROMPT FOR EXISTING RESOURCES ---
   KV_NAME=$(prompt_variable "Enter existing Key Vault name: " "KV_NAME")
@@ -176,17 +174,17 @@ else
   
   # --- VALIDATE EXISTENCE ---
   if ! az keyvault show -n "$KV_NAME" &>/dev/null; then
-    echo "❌ Key Vault '$KV_NAME' not found. Please verify the name and rerun the script."
+    log_error "Key Vault '$KV_NAME' not found. Please verify the name and rerun the script."
     exit 1
   fi
 
   if ! az storage account show -n "$SA_NAME" &>/dev/null; then
-    echo "❌ Storage Account '$SA_NAME' not found. Please verify the name and rerun the script."
+    log_error "Storage Account '$SA_NAME' not found. Please verify the name and rerun the script."
     exit 1
   fi
 
-  echo "✅ Using existing Key Vault: $KV_NAME"
-  echo "✅ Using existing Storage Account: $SA_NAME"
+  log_success "Using existing Key Vault: $KV_NAME"
+  log_success "Using existing Storage Account: $SA_NAME"
 fi
 
   # --- CREATE USER-ASSIGNED MANAGED IDENTITY, ASSIGN ROLES ---
@@ -198,13 +196,13 @@ fi
     echo
     UAMI_NAME=$(prompt_variable "Enter a name for the new UAMI: " "UAMI_NAME")
 
-    echo "Creating User-Assigned Managed Identity '$UAMI_NAME'..."
+    log_info "Creating User-Assigned Managed Identity '$UAMI_NAME'..."
     az identity create \
         -n "$UAMI_NAME" \
         -g "$RESOURCE_GROUP" \
         -l "$LOCATION" \
         >/dev/null
-    echo "✅ UAMI '$UAMI_NAME' created."
+    log_success "UAMI '$UAMI_NAME' created."
     update_env_var "CREATE_UAMI" "n"
     else
     echo
@@ -212,18 +210,18 @@ fi
 
     # Validate existence and get details
     if ! az identity show -n "$UAMI_NAME" -g "$RESOURCE_GROUP" &>/dev/null; then
-        echo "❌ UAMI '$UAMI_NAME' not found in resource group '$RESOURCE_GROUP'. Please verify and rerun the script."
+        log_error "UAMI '$UAMI_NAME' not found in resource group '$RESOURCE_GROUP'. Please verify and rerun the script."
         exit 1
     fi
 
-    echo "✅ Using existing UAMI '$UAMI_NAME'."
+    log_success "Using existing UAMI '$UAMI_NAME'."
     fi
 
     # --- GET UAMI DETAILS ---
     UAMI_ID=$(az identity show -n "$UAMI_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
     UAMI_PRINCIPAL_ID=$(az identity show -n "$UAMI_NAME" -g "$RESOURCE_GROUP" --query principalId -o tsv)
-    echo "  ↳ Resource ID:   $UAMI_ID"
-    echo "  ↳ Principal ID:  $UAMI_PRINCIPAL_ID"
+    log_info "  ↳ Resource ID:   $UAMI_ID"
+    log_info "  ↳ Principal ID:  $UAMI_PRINCIPAL_ID"
 
     # --- GET RESOURCE IDs ---
     STORAGE_ACCOUNT_ID=$(az storage account show -n "$SA_NAME" -g "$RESOURCE_GROUP" --query "id" -o tsv)
@@ -239,7 +237,7 @@ fi
         --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KV_NAME"
     
     # --- VALIDATE ROLE ASSIGNMENT ---
-    echo "Validating role assignment propagation...This can take up to 5 minutes."
+    log_info "Validating role assignment propagation...This can take up to 5 minutes."
     MAX_WAIT=300  # seconds
     INTERVAL=10   # seconds
     ELAPSED=0
@@ -252,29 +250,29 @@ fi
             --query "length([])" -o tsv)
 
         if [[ "$ASSIGNED" -gt 0 ]]; then
-            echo "✅ Role assignment confirmed."
+            log_success "Role assignment confirmed."
             break
         fi
 
         if [[ "$ELAPSED" -ge "$MAX_WAIT" ]]; then
-            echo "❌ Timeout waiting for role assignment to propagate."
+            log_error "Timeout waiting for role assignment to propagate."
             exit 1
         fi
 
-        echo "Waiting for role assignment to propagate... ($ELAPSED/$MAX_WAIT seconds)"
+        log_info "Waiting for role assignment to propagate... ($ELAPSED/$MAX_WAIT seconds)"
         sleep "$INTERVAL"
         ELAPSED=$((ELAPSED + INTERVAL))
     done
     
-    echo "  ✅ Assigned 'Key Vault Crypto Officer' to deployer for key creation."
+    log_success "Assigned 'Key Vault Crypto Officer' to deployer for key creation."
 
-    echo "Assigning roles to the UAMI..."
+    log_info "Assigning roles to the UAMI..."
     # --- STORAGE ROLE ---
     az role assignment create \
       --assignee "$UAMI_PRINCIPAL_ID" \
       --role "Storage Blob Data Reader" \
       --scope "$STORAGE_ACCOUNT_ID" >/dev/null
-    echo "  ✅ Assigned 'Storage Blob Data Reader' on $SA_NAME"
+    log_success "Assigned 'Storage Blob Data Reader' on $SA_NAME"
 
     # --- KEY VAULT ROLES ---
     for role in "Key Vault Certificate User" "Key Vault Crypto User" "Key Vault Secrets User"; do
@@ -282,7 +280,7 @@ fi
         --assignee "$UAMI_PRINCIPAL_ID" \
         --role "$role" \
         --scope "$KEYVAULT_ID" >/dev/null
-      echo "  ✅ Assigned '$role' on $KV_NAME"
+      log_success "Assigned '$role' on $KV_NAME"
     done
 
     # --- MANAGED IDENTITY OPERATOR ROLE ---
@@ -290,12 +288,12 @@ fi
       --assignee "$UAMI_PRINCIPAL_ID" \
       --role "Managed Identity Operator" \
       --scope "/subscriptions/$SUBSCRIPTION_ID" >/dev/null
-    echo "  ✅ Assigned 'Managed Identity Operator' at subscription level"
+    log_success "Assigned 'Managed Identity Operator' at subscription level"
 
     # --- CREATE KEY IN KEYVAULT ---
-    echo "Creating Key 'aks-cmk' in Key Vault '$KV_NAME'..."
+    log_info "Creating Key 'aks-cmk' in Key Vault '$KV_NAME'..."
     az keyvault key create --vault-name "$KV_NAME" -n aks-cmk >/dev/null
-    echo "  ✅ Key 'aks-cmk' created in Key Vault '$KV_NAME'"
+    log_success "Key 'aks-cmk' created in Key Vault '$KV_NAME'"
 
 # --- GET PARAMETERS FOR ARM TEMPLATE ---
     CREATED_BY=$(az ad signed-in-user show --query displayName -o tsv)
@@ -304,9 +302,9 @@ fi
     PROJECT_NAME=$(prompt_variable "Enter your project Name for this deployment, lower case, no spaces or special characters, min 5 characters: " "PROJECT_NAME")
 
     # List all vNets in the subscription that are bound to the location specified
-    echo "Existing vNets in location '$LOCATION':"
+    log_info "Existing vNets in location '$LOCATION':"
     VNET_LIST=$(az network vnet list --query "[?location=='$LOCATION'].{Name:name, ResourceGroup:resourceGroup}" -o table)
-    echo "vNets that you can use for your AKS Private Cluster based in the location $LOCATION:"
+    log_info "vNets that you can use for your AKS Private Cluster based in the location $LOCATION:"
     echo "$VNET_LIST"
 
     # vNet name for your AKS Private Cluster
@@ -314,11 +312,11 @@ fi
 
     # Get vNet Resource Group name for your AKS Private Cluster
     existingVnetResourceGroup=$(az network vnet list --query "[?name=='$existingVNETName'].resourceGroup" -o tsv)
-    echo "Using VNet Resource Group: $existingVnetResourceGroup"
+    log_info "Using VNet Resource Group: $existingVnetResourceGroup"
 
     # Get the subnet list for the existing vNet
     SUBNET_LIST=$(az network vnet list --query "[?name=='$existingVNETName'].subnets[].{Name:name, Address:addressPrefix}" -o table)
-    echo "Existing subnets in VNet '$existingVNETName':"
+    log_info "Existing subnets in VNet '$existingVNETName':"
     echo "$SUBNET_LIST"
 
     # Enter the IP Address prefix for the deployed subnet
@@ -344,38 +342,38 @@ fi
     # Enter the Environment tag value
     ENVIRONMENT=$(prompt_variable "Enter your Environment tag value (e.g., Dev, Test, Prod): " "ENVIRONMENT")
     ENVIRONMENT=${ENVIRONMENT:-n/a}
-    echo "ENVIRONMENT set to: $ENVIRONMENT"
+    log_info "ENVIRONMENT set to: $ENVIRONMENT"
 
 
-    echo "Getting parameters for ARM template..."
-    echo "  ↳ Created By:           $CREATED_BY"
-    echo "  ↳ Project Name:         $PROJECT_NAME"
-    echo "  ↳ Location:             $LOCATION"
-    echo "  ↳ vNet Name:            $existingVNETName"
-    echo "  ↳ vNet RG:              $existingVnetResourceGroup"
-    echo "  ↳ Subnet Prefix:        $SUBNET_PREFIX"
-    echo "  ↳ Key Vault Name:       $KV_NAME"
-    echo "  ↳ Storage Account:      $SA_NAME"
-    echo "  ↳ UAMI Name:            $UAMI_NAME"
-    echo "  ↳ Admin User Name:      $ADMIN_NAME"
-    echo "  ↳ Admin Password:       (hidden)"
-    echo "  ↳ Entra Admin Group ID: $ADMIN_GROUP_ID"    
+    log_info "Getting parameters for ARM template..."
+    log_info "  ↳ Created By:           $CREATED_BY"
+    log_info "  ↳ Project Name:         $PROJECT_NAME"
+    log_info "  ↳ Location:             $LOCATION"
+    log_info "  ↳ vNet Name:            $existingVNETName"
+    log_info "  ↳ vNet RG:              $existingVnetResourceGroup"
+    log_info "  ↳ Subnet Prefix:        $SUBNET_PREFIX"
+    log_info "  ↳ Key Vault Name:       $KV_NAME"
+    log_info "  ↳ Storage Account:      $SA_NAME"
+    log_info "  ↳ UAMI Name:            $UAMI_NAME"
+    log_info "  ↳ Admin User Name:      $ADMIN_NAME"
+    log_info "  ↳ Admin Password:       (hidden)"
+    log_info "  ↳ Entra Admin Group ID: $ADMIN_GROUP_ID"    
 
   # --- FINAL CONFIRMATION BEFORE TEMPLATE DEPLOYMENT ---
   echo
   echo "----------------------------------------------"
-  echo "✅ Prerequisite resources have been successfully deployed / verified and roles assigned:"
-  echo "   - Resource Group: $RESOURCE_GROUP"
-  echo "   - Key Vault: $KV_NAME"
-  echo "    ↳ Key created in Key Vault: aks-cmk"
-  echo "   - Storage Account: $SA_NAME"
-  echo "   - UAMI: $UAMI_NAME"
+  log_success "Prerequisite resources have been successfully deployed / verified and roles assigned:"
+  log_info "   - Resource Group: $RESOURCE_GROUP"
+  log_info "   - Key Vault: $KV_NAME"
+  log_info "    ↳ Key created in Key Vault: aks-cmk"
+  log_info "   - Storage Account: $SA_NAME"
+  log_info "   - UAMI: $UAMI_NAME"
   
   echo "----------------------------------------------"
   echo
   read -p "Proceed with ARM template deployment? (y/n): " CONFIRM_DEPLOY
   if [[ ! "$CONFIRM_DEPLOY" =~ ^[Yy]$ ]]; then
-    echo "Deployment cancelled after prerequisites."
+    log_info "Deployment cancelled after prerequisites."
     exit 0
   fi
 
@@ -383,7 +381,7 @@ fi
 TEMPLATE_FILE=$(prompt_variable "Enter full path to ARM template file (.json): " "TEMPLATE_FILE")
 read -rp "Enter full path to parameters file (.json) [Press Enter to skip, if you skip we will create based on your input]: " PARAM_FILE
 if [[ -n "$PARAM_FILE" && ! -f "$PARAM_FILE" ]]; then
-  echo "⚠️ Parameter file not found. Ignoring and deploying without parameters."
+  log_info "⚠️ Parameter file not found. Ignoring and deploying without parameters."
   PARAM_FILE=""
 fi
 
@@ -394,24 +392,24 @@ DEPLOYMENT_NAME=${DEPLOYMENT_NAME:-sub-deploy-$(date +%Y%m%d%H%M%S)}
 echo
 log_heading "Deployment Summary"
 
-echo "Cloud Environment: $CLOUD_ENV"
-echo "Subscription:      $SUBSCRIPTION_NAME ($SUBSCRIPTION_ID)"
-echo "Location:          $LOCATION"
-echo "Resource Group:    $RESOURCE_GROUP"
+log_info "Cloud Environment: $CLOUD_ENV"
+log_info "Subscription:      $SUBSCRIPTION_NAME ($SUBSCRIPTION_ID)"
+log_info "Location:          $LOCATION"
+log_info "Resource Group:    $RESOURCE_GROUP"
 if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
-  echo "Key Vault:         ${KV_NAME:-N/A}"
-  echo "Storage Account:   ${SA_NAME:-N/A}"
-  [[ "$CREATE_UAMI" =~ ^[Yy]$ ]] && echo "UAMI:              ${UAMI_NAME:-N/A}"
+  log_info "Key Vault:         ${KV_NAME:-N/A}"
+  log_info "Storage Account:   ${SA_NAME:-N/A}"
+  [[ "$CREATE_UAMI" =~ ^[Yy]$ ]] && log_info "UAMI:              ${UAMI_NAME:-N/A}"
 fi
-echo "Template File:     $TEMPLATE_FILE"
-[[ -n "$PARAM_FILE" ]] && echo "Parameters File:   $PARAM_FILE" || echo "Parameters File:   (none)"
-echo "Deployment Name:   $DEPLOYMENT_NAME"
+log_info "Template File:     $TEMPLATE_FILE"
+[[ -n "$PARAM_FILE" ]] && log_info "Parameters File:   $PARAM_FILE" || log_info "Parameters File:   (none)"
+log_info "Deployment Name:   $DEPLOYMENT_NAME"
 echo "----------------------------------------------"
 echo
 
 read -p "Confirm final deployment to subscription scope? (y/n): " CONFIRM_FINAL
 if [[ ! "$CONFIRM_FINAL" =~ ^[Yy]$ ]]; then
-  echo "Deployment cancelled."
+  log_info "Deployment cancelled."
   exit 0
 fi
 
@@ -494,11 +492,9 @@ PARAM_FILE="$(pwd)/infra.parameters.json"
 log_heading "✅ Parameters file created: $PARAM_FILE"
 echo
 
-exit 1
-
 # --- DEPLOY ARM TEMPLATE USING GENERATED PARAMETERS FILE ---
 DEPLOYMENT_NAME="${PROJECT_NAME}-deploy-$(date +%Y%m%d%H%M)"
-echo "Starting subscription-scope ARM deployment: $DEPLOYMENT_NAME"
+log_info "Starting subscription-scope ARM deployment: $DEPLOYMENT_NAME"
 az deployment sub create \
   --name "$DEPLOYMENT_NAME" \
   --location "$LOCATION" \
@@ -508,7 +504,7 @@ az deployment sub create \
 log_heading "✅ ARM deployment completed: $DEPLOYMENT_NAME"
 
 # Assign Network Contributor role to UAMI for AKS Ingress deployments
-echo "Assigning network role to the UAMI for AKS Ingress deployments..."
+log_info "Assigning network role to the UAMI for AKS Ingress deployments..."
     # --- NETWORK ROLE ---
     # Get subnet ID
     SUBNET_ID=$(az network vnet subnet show \
@@ -526,7 +522,7 @@ echo "Assigning network role to the UAMI for AKS Ingress deployments..."
     log_heading "  ✅ Assigned 'Network Contributor' on $PROJECT_NAME-aks-snet"
 
 # Assign ACR Pull role to UAMI for AKS ACR access
-echo "Assigning ACR Pull role to the UAMI for AKS ACR access..."
+log_info "Assigning ACR Pull role to the UAMI for AKS ACR access..."
     # --- ACR PULL ROLE ---
     # Get ACR name
     ACR_NAME=$(az acr list -g "rg-$PROJECT_NAME" --query "[?starts_with(name, '${PROJECT_NAME}')].name" -o tsv)
@@ -541,7 +537,7 @@ echo "Assigning ACR Pull role to the UAMI for AKS ACR access..."
     log_heading "  ✅ Assigned 'AcrPull' on $ACR_NAME"
 
 # Assign ACR Push and Pull role for current signed in user
-echo "Assigning ACR Push role to the current user for AKS ACR access..."
+log_info "Assigning ACR Push role to the current user for AKS ACR access..."
     # --- ACR PUSH ROLE ---
     # Get current user principal ID
     CURRENT_USER_ID=$(az ad signed-in-user show --query id -o tsv)
@@ -563,7 +559,7 @@ echo "Assigning ACR Push role to the current user for AKS ACR access..."
     log_heading "  ✅ Assigned 'AcrPull' on $ACR_NAME to current user"
 
 # ACR Push for Splunk Assets to Container Registry
-echo "Pushing Splunk Operator container image to ACR..."
+log_info "Pushing Splunk Operator container image to ACR..."
     az acr import \
       --name "$ACR_NAME" \
       --source $OPERATOR_IMAGE \
@@ -571,7 +567,7 @@ echo "Pushing Splunk Operator container image to ACR..."
 
     log_heading "  ✅ Splunk Operator container image ($OPERATOR_IMAGE) pushed to ACR: $ACR_NAME"
 
-echo "Pushing Splunk container image to ACR..."
+log_info "Pushing Splunk container image to ACR..."
     az acr import \
       --name "$ACR_NAME" \
       --source $SPLUNK_IMAGE \
@@ -580,9 +576,9 @@ echo "Pushing Splunk container image to ACR..."
     log_heading "  ✅ Splunk container image ($SPLUNK_IMAGE) pushed to ACR: $ACR_NAME"
 
 # Waiting for 30 seconds to ensure ACR replication and RBAC propagation
-echo "Waiting 30 seconds..."
+log_info "Waiting 30 seconds..."
 sleep 30
-echo "Done waiting."
+log_info "Done waiting."
 
 # Output of container images pushed
 log_heading "Container images in ACR '$ACR_NAME':"
