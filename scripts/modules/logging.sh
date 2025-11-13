@@ -19,7 +19,7 @@ LOG_FILE=""
 init_log_file() {
     local script_name=$(basename "${BASH_SOURCE[-1]}" .sh)
     local timestamp=$(date +"%m.%d.%Y.%H.%M.%S")
-    WORKING_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    WORKING_DIRECTORY="$(pwd)"
     local log_dir="$WORKING_DIRECTORY/logs"
 
     # Create logs directory if it doesn't exist

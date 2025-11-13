@@ -501,6 +501,8 @@ echo "✅ Parameters file created: $PARAM_FILE"
 echo "----------------------------------------------"
 echo
 
+exit 1
+
 # --- DEPLOY ARM TEMPLATE USING GENERATED PARAMETERS FILE ---
 DEPLOYMENT_NAME="${PROJECT_NAME}-deploy-$(date +%Y%m%d%H%M)"
 echo "Starting subscription-scope ARM deployment: $DEPLOYMENT_NAME"
