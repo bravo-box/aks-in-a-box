@@ -81,3 +81,24 @@ log_heading() {
     log " $1" "$COLOR_CYAN"
     log "----------------------------------------------" "$COLOR_CYAN"
 }
+
+capture_configuration() {
+    log_to_file "Capturing current configuration:"
+    log_to_file "----------------------------------------------"
+    log_to_file "./infra.parameters.json contents:"
+    param_file_contents=$(cat ./infra.parameters.json | python3 -m json.tool)
+    log_to_file "$param_file_contents"
+    log_to_file "----------------------------------------------"
+    log_to_file ""
+    log_to_file "----------------------------------------------"
+    log_to_file "Environment Variables:"
+    while IFS='=' read -r key value; do
+        log_to_file "$key=$value"
+    done < <(env | sort)
+    log_to_file "----------------------------------------------"
+    log_to_file "Input Parameters:"
+    log_to_file "----------------------------------------------"
+    env_file_contents=$(cat .temp.infra.env)
+    log_to_file "$env_file_contents"
+    log_to_file "----------------------------------------------"
+}

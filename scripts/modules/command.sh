@@ -7,7 +7,7 @@ run_az_command() {
   
   # Capture stdout while allowing stderr to display on screen
   # This preserves visual indicators and progress messages
-  log_info "Executing command: $cmd"
+  log_to_file "Executing command: $cmd"
   output=$(eval "$cmd" 2>/dev/tty)
   exit_code=$?
   
@@ -16,7 +16,8 @@ run_az_command() {
     log_error "Command: $cmd"
     log_error "Exit code: $exit_code"
     log_error "Output: $output"
-    exit 1
+    capture_configuration
+    return 1
   fi
   
   # Return output for commands that need it

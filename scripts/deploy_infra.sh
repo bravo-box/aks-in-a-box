@@ -20,6 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIABLE_MODULE_FILE="${SCRIPT_DIR}/modules/variable_mgmt.sh"
 LOG_MODULE_FILE="${SCRIPT_DIR}/modules/logging.sh"
 COMMAND_MODULE_FILE="${SCRIPT_DIR}/modules/command.sh"
+ERROR_HANDLING_FILE="${SCRIPT_DIR}/modules/error_handling.sh"
 
 if [[ ! -f "$VARIABLE_MODULE_FILE" ]]; then
   log_error "Required module not found: $VARIABLE_MODULE_FILE"
@@ -35,9 +36,18 @@ if [[ ! -f "$COMMAND_MODULE_FILE" ]]; then
   log_error "Required module not found: $COMMAND_MODULE_FILE"
   exit 1
 fi
+
+if [[ ! -f "$ERROR_HANDLING_FILE" ]]; then
+  log_error "Required module not found: $ERROR_HANDLING_FILE"
+  exit 1
+fi
 source "$VARIABLE_MODULE_FILE"
 source "$LOG_MODULE_FILE"
 source "$COMMAND_MODULE_FILE"
+source "$ERROR_HANDLING_FILE"
+
+# Set up trap to call error_handler on any error (when set -e causes exit)
+trap 'error_handler ${LINENO}' ERR
 
 init_log_file
 load_env
@@ -400,7 +410,7 @@ fi
 
 # --- GENERATE PARAMETERS FILE ---
 echo
-log_heading "📄 Generating ARM parameters file: 1_aks.parameters.json"
+log_heading "📄 Generating ARM parameters file: infra.parameters.json"
 
 cat > infra.parameters.json <<EOF
 {
@@ -479,6 +489,7 @@ echo
 
 # --- DEPLOY ARM TEMPLATE USING GENERATED PARAMETERS FILE ---
 DEPLOYMENT_NAME="${PROJECT_NAME}-deploy-$(date +%Y%m%d%H%M)"
+capture_configuration
 log_info "Starting subscription-scope ARM deployment: $DEPLOYMENT_NAME"
 run_az_command "az deployment sub create --name '$DEPLOYMENT_NAME' --location '$LOCATION' --template-file '$TEMPLATE_FILE' --parameters @'$PARAM_FILE'" "ARM template deployment failed"
 
