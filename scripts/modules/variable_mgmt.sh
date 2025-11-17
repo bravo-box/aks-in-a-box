@@ -28,9 +28,14 @@ prompt_y_or_n() {
 
     ensure_env_file_exists || return 1
 
-    read -rp "$INPUT_PROMPT" VARIABLE_VALUE
-    while [[ "$VARIABLE_VALUE" != "y" && "$VARIABLE_VALUE" != "Y" && "$VARIABLE_VALUE" != "n" && "$VARIABLE_VALUE" != "N" ]]; do
-        read -rp "Invalid response. Please enter 'y' or 'n': " VARIABLE_VALUE
+    while true; do
+        read -rp "$INPUT_PROMPT" VARIABLE_VALUE
+        VARIABLE_VALUE=$(echo "$VARIABLE_VALUE" | tr '[:upper:]' '[:lower:]')
+        if [[ "$VARIABLE_VALUE" =~ ^[yn]$ ]]; then
+            break
+        else
+            echo "Invalid response. Please enter 'y' or 'n'."
+        fi
     done
 
     set_variable "$VARIABLE_NAME" "$VARIABLE_VALUE"
@@ -90,8 +95,9 @@ load_env() {
     if [ -f "$ENV_FILE_NAME" ]; then
         while true; do
             read -rp "There are saved parameters from a previous run, would you like me to load those? (y/n): " response
+            response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
             
-            if [ "$response" = "y" ] || [ "$response" = "Y" ]; then
+            if [[ "$response" == "y" ]]; then
                 # Load the environment variables
                 set -a
                 source "$ENV_FILE_NAME"
@@ -99,7 +105,7 @@ load_env() {
                 echo "Environment variables loaded from $ENV_FILE_NAME"
                 LOADED_ENV="true"
                 return 0
-            elif [ "$response" = "n" ] || [ "$response" = "N" ]; then
+            elif [[ "$response" == "n" ]]; then
                 rm "$ENV_FILE_NAME"
                 echo "Previous parameters deleted."
                 LOADED_ENV="false"

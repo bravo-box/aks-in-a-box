@@ -151,7 +151,7 @@ done
 # --- DEPLOY OR USE EXISTING KEY VAULT + STORAGE ACCOUNT ---
 CREATE_PREDEPLOY=$(prompt_y_or_n "Do you want to deploy a Key Vault and Storage Account before the ARM template? (y/n): " "CREATE_PREDEPLOY")
 
-if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
+if [[ "$CREATE_PREDEPLOY" == "y" ]]; then
   echo
   KV_NAME=$(prompt_variable "Enter Key Vault name (must be globally unique): " "KV_NAME")
   SA_NAME=$(prompt_variable "Enter Storage Account name (must be globally unique, 3-24 lowercase letters/numbers): " "SA_NAME")
@@ -203,7 +203,7 @@ fi
     # --- CREATE OR USE EXISTING USER-ASSIGNED MANAGED IDENTITY ---
     CREATE_UAMI=$(prompt_y_or_n "Do you want to create a new User-Assigned Managed Identity (UAMI)? (y/n): " "CREATE_UAMI")
 
-    if [[ "$CREATE_UAMI" =~ ^[Yy]$ ]]; then
+    if [[ "$CREATE_UAMI" == "y" ]]; then
     echo
     UAMI_NAME=$(prompt_variable "Enter a name for the new UAMI: " "UAMI_NAME")
 
@@ -294,7 +294,20 @@ fi
     CREATED_BY=$(run_az_command "az ad signed-in-user show --query displayName -o tsv" "Failed to get current user display name")
     
     # Capture ProjectName from user
-    PROJECT_NAME=$(prompt_variable "Enter your project Name for this deployment, lower case, no spaces or special characters, min 5 characters: " "PROJECT_NAME")
+    while true; do
+      PROJECT_NAME=$(prompt_variable "Enter your project Name for this deployment, lower case, no spaces or special characters, max 5 characters: " "PROJECT_NAME")
+      if [[ ${#PROJECT_NAME} -le 5 ]]; then
+        break
+      else
+        log_error "Project name must be no more than 5 characters. Please try again."
+        # Clear the variable so prompt_variable will ask again
+        unset PROJECT_NAME
+        # Remove from env file if it was saved
+        if [[ -f "$ENV_FILE_NAME" ]]; then
+          sed -i '/^PROJECT_NAME=/d' "$ENV_FILE_NAME"
+        fi
+      fi
+    done
 
     # List all vNets in the subscription that are bound to the location specified
     log_info "Existing vNets in location '$LOCATION':"
@@ -366,8 +379,16 @@ fi
   
   echo "----------------------------------------------"
   echo
-  read -p "Proceed with ARM template deployment? (y/n): " CONFIRM_DEPLOY
-  if [[ ! "$CONFIRM_DEPLOY" =~ ^[Yy]$ ]]; then
+  while true; do
+    read -rp "Proceed with ARM template deployment? (y/n): " CONFIRM_DEPLOY
+    CONFIRM_DEPLOY=$(echo "$CONFIRM_DEPLOY" | tr '[:upper:]' '[:lower:]')
+    if [[ "$CONFIRM_DEPLOY" =~ ^[yn]$ ]]; then
+      break
+    else
+      log_error "Please answer 'y' or 'n'."
+    fi
+  done
+  if [[ "$CONFIRM_DEPLOY" == "n" ]]; then
     log_info "Deployment cancelled after prerequisites."
     exit 0
   fi
@@ -391,10 +412,10 @@ log_info "Cloud Environment: $CLOUD_ENV"
 log_info "Subscription:      $SUBSCRIPTION_NAME ($SUBSCRIPTION_ID)"
 log_info "Location:          $LOCATION"
 log_info "Resource Group:    $RESOURCE_GROUP"
-if [[ "$CREATE_PREDEPLOY" =~ ^[Yy]$ ]]; then
+if [[ "$CREATE_PREDEPLOY" == "y" ]]; then
   log_info "Key Vault:         ${KV_NAME:-N/A}"
   log_info "Storage Account:   ${SA_NAME:-N/A}"
-  [[ "$CREATE_UAMI" =~ ^[Yy]$ ]] && log_info "UAMI:              ${UAMI_NAME:-N/A}"
+  [[ "$CREATE_UAMI" == "y" ]] && log_info "UAMI:              ${UAMI_NAME:-N/A}"
 fi
 log_info "Template File:     $TEMPLATE_FILE"
 [[ -n "$PARAM_FILE" ]] && log_info "Parameters File:   $PARAM_FILE" || log_info "Parameters File:   (none)"
@@ -402,8 +423,16 @@ log_info "Deployment Name:   $DEPLOYMENT_NAME"
 echo "----------------------------------------------"
 echo
 
-read -p "Confirm final deployment to subscription scope? (y/n): " CONFIRM_FINAL
-if [[ ! "$CONFIRM_FINAL" =~ ^[Yy]$ ]]; then
+while true; do
+  read -rp "Confirm final deployment to subscription scope? (y/n): " CONFIRM_FINAL
+  CONFIRM_FINAL=$(echo "$CONFIRM_FINAL" | tr '[:upper:]' '[:lower:]')
+  if [[ "$CONFIRM_FINAL" =~ ^[yn]$ ]]; then
+    break
+  else
+    log_error "Please answer 'y' or 'n'."
+  fi
+done
+if [[ "$CONFIRM_FINAL" == "n" ]]; then
   log_info "Deployment cancelled."
   exit 0
 fi
