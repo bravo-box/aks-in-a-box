@@ -45,12 +45,17 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "Resource ID: $RESOURCE_ID"
     
     # Prompt for bastion deployment
-    read -rp "Do you wish to deploy bastion attached to this vnet? (y/n): " DEPLOY_BASTION
-    while [[ ! "$DEPLOY_BASTION" =~ ^[YyNn]$ ]]; do
-        read -rp "Invalid input. Please enter 'y' or 'n': " DEPLOY_BASTION
+    while true; do
+        read -rp "Do you wish to deploy bastion attached to this vnet? (y/n): " DEPLOY_BASTION
+        DEPLOY_BASTION=$(echo "$DEPLOY_BASTION" | tr '[:upper:]' '[:lower:]')
+        if [[ "$DEPLOY_BASTION" =~ ^[yn]$ ]]; then
+            break
+        else
+            echo "Invalid input. Please enter 'y' or 'n'."
+        fi
     done
     
-    if [[ "$DEPLOY_BASTION" =~ ^[Yy]$ ]]; then
+    if [[ "$DEPLOY_BASTION" == "y" ]]; then
         read -rp "Provide a name for the Bastion Host: " BASTION_NAME
         while [[ -z "$BASTION_NAME" ]]; do
             read -rp "BASTION_NAME cannot be empty. Please enter a valid BASTION_NAME: " BASTION_NAME
