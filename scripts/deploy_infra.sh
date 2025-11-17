@@ -114,18 +114,7 @@ log_info "Selected location: $LOCATION"
 echo
 
 # --- CREATE OR USE EXISTING RESOURCE GROUP ---
-while true; do
-  CREATE_RG=$(prompt_y_or_n "Do you want to create a new Resource Group for shared services, KV, Storage, UAMI? (y/n): " "CREATE_RG")
-  # normalize to single lowercase char, trim whitespace
-  CREATE_RG=$(echo "$CREATE_RG" | tr '[:upper:]' '[:lower:]')           # convert to lowercase
-  CREATE_RG="${CREATE_RG%%+([[:space:]])}" # no-op if no extglob; safe fallback
-  # Accept only y or n
-  if [[ "$CREATE_RG" =~ ^[yn]$ ]]; then
-    break
-  else
-    log_error "Please answer 'y' or 'n'."
-  fi
-done
+CREATE_RG=$(prompt_y_or_n "Do you want to create a new Resource Group for shared services, KV, Storage, UAMI? (y/n): " "CREATE_RG")
 
   if [[ "$CREATE_RG" == "y" ]]; then
     echo

@@ -33,9 +33,8 @@ prompt_y_or_n() {
         VARIABLE_VALUE=$(echo "$VARIABLE_VALUE" | tr '[:upper:]' '[:lower:]')
         if [[ "$VARIABLE_VALUE" =~ ^[yn]$ ]]; then
             break
-        else
-            echo "Invalid response. Please enter 'y' or 'n'."
         fi
+        echo "Invalid response. Please enter 'y' or 'n'." >&2
     done
 
     set_variable "$VARIABLE_NAME" "$VARIABLE_VALUE"
