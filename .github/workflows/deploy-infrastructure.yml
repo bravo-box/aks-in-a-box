@@ -125,16 +125,22 @@ jobs:
           AUTO_APPROVE: true
         run: |
           # Make the deployment script executable
+          echo "Making deployment script executable"
           chmod +x ./scripts/deploy_infra.sh
+          echo "Deployment script is now executable"
           
           # The script will read from ./.temp.infra.env which we prepared
           # Export the admin password and auto-approve setting
+          echo "Setting environment variables for deployment"
           export ADMIN_PASSWORD="${{ secrets.JUMPBOX_ADMIN_PASSWORD }}"
           export AUTO_APPROVE="true"
+          echo "Environment variables set"
           
           # Run the deployment script
           # The script sources the .temp.infra.env file we created
+          echo "Starting infrastructure deployment..."  
           ./scripts/deploy_infra.sh
+          echo "Infrastructure deployment completed"
 
       - name: Deployment summary
         if: always()
