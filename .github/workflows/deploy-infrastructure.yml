@@ -75,6 +75,7 @@ jobs:
         with:
           creds: ${{ secrets[format('AZURE_CREDENTIALS_{0}', upper(github.event.inputs.environment))] }}
           enable-AzPSSession: false
+          environment: ${{ github.event.inputs.cloud_type }}
 
       - name: Set Azure Cloud
         run: |
