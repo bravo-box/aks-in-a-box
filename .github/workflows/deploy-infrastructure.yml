@@ -83,7 +83,7 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
-          creds: ${{ secrets[format('AZURE_CREDENTIALS_{0}')] }}
+          creds: ${{ secrets[format('AZURE_CREDENTIALS_DEV')] }}
           enable-AzPSSession: false
           environment: "AzureUSGovernment"
 
