@@ -43,22 +43,53 @@ az network bastion create \
 
 ## Automated Deployment for the Infrastructure (Recommended)
 
+### GitHub Actions Workflow Deployment
+
+This repository includes a GitHub Actions workflow that automates the deployment of AKS infrastructure to Azure subscriptions. The workflow supports multiple environments (dev, test, prod) and both Azure Commercial and Azure Government clouds.
+
+#### Setup GitHub Actions Deployment
+
+1. **Configure GitHub Secrets**: Add the following secrets to your GitHub repository:
+   - `AZURE_CREDENTIALS_DEV` - Azure service principal credentials for dev environment
+   - `AZURE_CREDENTIALS_TEST` - Azure service principal credentials for test environment
+   - `AZURE_CREDENTIALS_PROD` - Azure service principal credentials for prod environment
+   - `JUMPBOX_ADMIN_PASSWORD` - Admin password for jumpboxes (at least 12 characters)
+
+2. **Configure Environment Files**: Update the environment-specific `.env` files in the `environments/` directory:
+   - `environments/.env.dev` - Development environment configuration
+   - `environments/.env.test` - Test environment configuration
+   - `environments/.env.prod` - Production environment configuration
+
+3. **Run the Workflow**:
+   - Go to the "Actions" tab in your GitHub repository
+   - Select "Deploy AKS Infrastructure" workflow
+   - Click "Run workflow"
+   - Select the target environment (dev/test/prod)
+   - Select the Azure cloud type (AzureCloud or AzureUSGovernment)
+   - Click "Run workflow" to start the deployment
+
+For detailed information on configuring environment files and GitHub secrets, see [environments/README.md](./environments/README.md).
+
+### Local Deployment with VSCode Tasks
+
 These tasks can be done either through cli, powershell, vscode task or the portal.
 
-### Available Tasks
+#### Available Tasks
 
-#### Infrastructure Tasks
+##### Infrastructure Tasks
 - **Login to Azure Commercial** - Performs an az login against azure commercial.
 - **Login to Azure Government** - Performs an az login against azure government.
 - **Deploy Infrastructure** - Runs the `deploy_infra.sh` script to provision all required Azure resources including Resource Group, Key Vault, Storage Account, and User Assigned Managed Identity
 - **Create Virtual Network** - Runs the 'create_vnet.sh' script to provision a virtual network and bastion instance.
 
-### Running Tasks
+#### Running Tasks
 To execute any task:
 1. Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`)
 2. Type "Tasks: Run Task"
 3. Select the desired task from the list
 4. Follow any prompts for required parameters
+
+### Manual Deployment with Bash Script
 
 Throughout this readme, the az cli commands that you can run to do the manual configs. We have also provided a full bash script that will build the entire infrastructure for you.
 

@@ -322,13 +322,21 @@ fi
     # Capture Admin User Name from user
     ADMIN_NAME=$(prompt_variable "Enter an admin user name for the jumpbox (1-20 characters): " "ADMIN_NAME")
 
-    # Capture Admin Password from user
-    read -rsp "Enter an admin password for the jumpbox (at least 12 characters): " ADMIN_PASSWORD
-    echo
-    while [[ -z "$ADMIN_PASSWORD" || ${#ADMIN_PASSWORD} -lt 12 ]]; do
-      read -rsp "Admin password must be at least 12 characters. Please enter a valid admin password: " ADMIN_PASSWORD
+    # Capture Admin Password from user or environment variable
+    if [[ -z "$ADMIN_PASSWORD" ]]; then
+      read -rsp "Enter an admin password for the jumpbox (at least 12 characters): " ADMIN_PASSWORD
       echo
-    done
+      while [[ -z "$ADMIN_PASSWORD" || ${#ADMIN_PASSWORD} -lt 12 ]]; do
+        read -rsp "Admin password must be at least 12 characters. Please enter a valid admin password: " ADMIN_PASSWORD
+        echo
+      done
+    else
+      log_info "Using ADMIN_PASSWORD from environment variable"
+      if [[ ${#ADMIN_PASSWORD} -lt 12 ]]; then
+        log_error "ADMIN_PASSWORD must be at least 12 characters long"
+        exit 1
+      fi
+    fi
     
     # Enter the Entra group ID that will be used for AKS Admins
     ADMIN_GROUP_ID=$(prompt_variable "Enter the Entra ID Group Object ID for AKS Admins (e.g., 558a10de-c70a-43fd-9400-0d56c0d49a2c): " "ADMIN_GROUP_ID")
@@ -368,15 +376,20 @@ fi
   
   echo "----------------------------------------------"
   echo
-  while true; do
-    read -rp "Proceed with ARM template deployment? (y/n): " CONFIRM_DEPLOY
-    CONFIRM_DEPLOY=$(echo "$CONFIRM_DEPLOY" | tr '[:upper:]' '[:lower:]')
-    if [[ "$CONFIRM_DEPLOY" =~ ^[yn]$ ]]; then
-      break
-    else
-      log_error "Please answer 'y' or 'n'."
-    fi
-  done
+  if [[ "${AUTO_APPROVE}" == "true" ]]; then
+    log_info "AUTO_APPROVE is set, proceeding with ARM template deployment automatically"
+    CONFIRM_DEPLOY="y"
+  else
+    while true; do
+      read -rp "Proceed with ARM template deployment? (y/n): " CONFIRM_DEPLOY
+      CONFIRM_DEPLOY=$(echo "$CONFIRM_DEPLOY" | tr '[:upper:]' '[:lower:]')
+      if [[ "$CONFIRM_DEPLOY" =~ ^[yn]$ ]]; then
+        break
+      else
+        log_error "Please answer 'y' or 'n'."
+      fi
+    done
+  fi
   if [[ "$CONFIRM_DEPLOY" == "n" ]]; then
     log_info "Deployment cancelled after prerequisites."
     exit 0
@@ -412,15 +425,20 @@ log_info "Deployment Name:   $DEPLOYMENT_NAME"
 echo "----------------------------------------------"
 echo
 
-while true; do
-  read -rp "Confirm final deployment to subscription scope? (y/n): " CONFIRM_FINAL
-  CONFIRM_FINAL=$(echo "$CONFIRM_FINAL" | tr '[:upper:]' '[:lower:]')
-  if [[ "$CONFIRM_FINAL" =~ ^[yn]$ ]]; then
-    break
-  else
-    log_error "Please answer 'y' or 'n'."
-  fi
-done
+if [[ "${AUTO_APPROVE}" == "true" ]]; then
+  log_info "AUTO_APPROVE is set, confirming final deployment automatically"
+  CONFIRM_FINAL="y"
+else
+  while true; do
+    read -rp "Confirm final deployment to subscription scope? (y/n): " CONFIRM_FINAL
+    CONFIRM_FINAL=$(echo "$CONFIRM_FINAL" | tr '[:upper:]' '[:lower:]')
+    if [[ "$CONFIRM_FINAL" =~ ^[yn]$ ]]; then
+      break
+    else
+      log_error "Please answer 'y' or 'n'."
+    fi
+  done
+fi
 if [[ "$CONFIRM_FINAL" == "n" ]]; then
   log_info "Deployment cancelled."
   exit 0
