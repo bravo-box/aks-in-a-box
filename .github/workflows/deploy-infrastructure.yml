@@ -36,9 +36,9 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy to ${{ github.event.inputs.environment }}
+    name: Deploy to dev
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: dev
     
     steps:
       - name: Checkout repository
@@ -47,7 +47,7 @@ jobs:
       - name: Load environment configuration
         id: load-env
         run: |
-          ENV_FILE="environments/.env.${{ github.event.inputs.environment }}"
+          ENV_FILE="environments/.env.dev"
           
           if [ ! -f "$ENV_FILE" ]; then
             echo "Error: Environment file $ENV_FILE not found"
@@ -75,8 +75,8 @@ jobs:
           done < "$ENV_FILE"
           
           # Override CLOUD_ENV with workflow input
-          export CLOUD_ENV="${{ github.event.inputs.cloud_type }}"
-          echo "CLOUD_ENV=${{ github.event.inputs.cloud_type }}" >> $GITHUB_OUTPUT
+          export CLOUD_ENV="AzureUSGovernment"
+          echo "CLOUD_ENV=AzureUSGovernment" >> $GITHUB_OUTPUT
           
           echo "Configuration loaded successfully"
 
@@ -89,8 +89,8 @@ jobs:
 
       - name: Set Azure Cloud
         run: |
-          echo "Setting Azure cloud to: ${{ github.event.inputs.cloud_type }}"
-          az cloud set --name "${{ github.event.inputs.cloud_type }}"
+          echo "Setting Azure cloud to: AzureUSGovernment"
+          az cloud set --name "AzureUSGovernment"
           az account show
 
       - name: Prepare environment file for deployment
@@ -99,10 +99,10 @@ jobs:
           ENV_FILE="./.temp.infra.env"
           
           # Copy the environment configuration
-          cp "environments/.env.${{ github.event.inputs.environment }}" "$ENV_FILE"
+          cp "environments/.env.dev" "$ENV_FILE"
           
           # Override CLOUD_ENV in the env file
-          sed -i "s/^CLOUD_ENV=.*/CLOUD_ENV=${{ github.event.inputs.cloud_type }}/" "$ENV_FILE"
+          sed -i "s/^CLOUD_ENV=.*/CLOUD_ENV=AzureUSGovernment/" "$ENV_FILE"
           
           echo "Environment file prepared for deployment"
 
@@ -122,7 +122,7 @@ jobs:
       - name: Deploy infrastructure
         env:
           ADMIN_PASSWORD: ${{ secrets.JUMPBOX_ADMIN_PASSWORD }}
-          AUTO_APPROVE: ${{ github.event.inputs.auto_approve }}
+          AUTO_APPROVE: true
         run: |
           # Make the deployment script executable
           chmod +x ./scripts/deploy_infra.sh
@@ -130,7 +130,7 @@ jobs:
           # The script will read from ./.temp.infra.env which we prepared
           # Export the admin password and auto-approve setting
           export ADMIN_PASSWORD="${{ secrets.JUMPBOX_ADMIN_PASSWORD }}"
-          export AUTO_APPROVE="${{ github.event.inputs.auto_approve }}"
+          export AUTO_APPROVE="true"
           
           # Run the deployment script
           # The script sources the .temp.infra.env file we created
@@ -141,9 +141,9 @@ jobs:
         run: |
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cloud Type**: ${{ github.event.inputs.cloud_type }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Auto Approve**: ${{ github.event.inputs.auto_approve }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cloud Type**: AzureUSGovernment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Auto Approve**: true" >> $GITHUB_STEP_SUMMARY
           echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           
@@ -159,7 +159,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: deployment-artifacts-${{ github.event.inputs.environment }}
+          name: deployment-artifacts-dev
           path: |
             infra.parameters.json
             .temp.infra.env
