@@ -19,6 +19,11 @@ on:
           - AzureCloud
           - AzureUSGovernment
         default: AzureCloud
+      auto_approve:
+        description: 'Auto-approve deployment (skip manual confirmation)'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -112,15 +117,15 @@ jobs:
       - name: Deploy infrastructure
         env:
           ADMIN_PASSWORD: ${{ secrets.JUMPBOX_ADMIN_PASSWORD }}
-          AUTO_APPROVE: 'true'
+          AUTO_APPROVE: ${{ github.event.inputs.auto_approve }}
         run: |
           # Make the deployment script executable
           chmod +x ./scripts/deploy_infra.sh
           
           # The script will read from ./.temp.infra.env which we prepared
-          # Export the admin password and auto-approve for non-interactive mode
+          # Export the admin password and auto-approve setting
           export ADMIN_PASSWORD="${{ secrets.JUMPBOX_ADMIN_PASSWORD }}"
-          export AUTO_APPROVE="true"
+          export AUTO_APPROVE="${{ github.event.inputs.auto_approve }}"
           
           # Run the deployment script
           # The script sources the .temp.infra.env file we created
@@ -133,6 +138,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Cloud Type**: ${{ github.event.inputs.cloud_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Auto Approve**: ${{ github.event.inputs.auto_approve }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           
