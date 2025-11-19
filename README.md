@@ -49,18 +49,68 @@ This repository includes a GitHub Actions workflow that automates the deployment
 
 #### Setup GitHub Actions Deployment
 
-1. **Configure GitHub Secrets**: Add the following secrets to your GitHub repository:
-   - `AZURE_CREDENTIALS_DEV` - Azure service principal credentials for dev environment
-   - `AZURE_CREDENTIALS_TEST` - Azure service principal credentials for test environment
-   - `AZURE_CREDENTIALS_PROD` - Azure service principal credentials for prod environment
+1. **Create Service Principals**: Create Azure service principals for each environment (dev, test, prod) using Azure CLI:
+
+   ```bash
+   # Set your subscription ID
+   SUBSCRIPTION_ID="<your-subscription-id>"
+   
+   # Login to Azure
+   az login
+   
+   # Set the active subscription
+   az account set --subscription $SUBSCRIPTION_ID
+   
+   # Create service principal for dev environment
+   az ad sp create-for-rbac \
+     --name "sp-aks-github-dev" \
+     --role "Contributor" \
+     --scopes "/subscriptions/$SUBSCRIPTION_ID" \
+     --sdk-auth
+   
+   # Create service principal for test environment
+   az ad sp create-for-rbac \
+     --name "sp-aks-github-test" \
+     --role "Contributor" \
+     --scopes "/subscriptions/$SUBSCRIPTION_ID" \
+     --sdk-auth
+   
+   # Create service principal for prod environment
+   az ad sp create-for-rbac \
+     --name "sp-aks-github-prod" \
+     --role "Contributor" \
+     --scopes "/subscriptions/$SUBSCRIPTION_ID" \
+     --sdk-auth
+   ```
+   
+   **Note**: Save the JSON output from each command - you'll need these for the GitHub secrets in the next step. The output will look like:
+   ```json
+   {
+     "clientId": "...",
+     "clientSecret": "...",
+     "subscriptionId": "...",
+     "tenantId": "...",
+     "activeDirectoryEndpointUrl": "...",
+     "resourceManagerEndpointUrl": "...",
+     "activeDirectoryGraphResourceId": "...",
+     "sqlManagementEndpointUrl": "...",
+     "galleryEndpointUrl": "...",
+     "managementEndpointUrl": "..."
+   }
+   ```
+
+2. **Configure GitHub Secrets**: Add the following secrets to your GitHub repository:
+   - `AZURE_CREDENTIALS_DEV` - Azure service principal credentials for dev environment (paste the entire JSON output from step 1)
+   - `AZURE_CREDENTIALS_TEST` - Azure service principal credentials for test environment (paste the entire JSON output from step 1)
+   - `AZURE_CREDENTIALS_PROD` - Azure service principal credentials for prod environment (paste the entire JSON output from step 1)
    - `JUMPBOX_ADMIN_PASSWORD` - Admin password for jumpboxes (at least 12 characters)
 
-2. **Configure Environment Files**: Update the environment-specific `.env` files in the `environments/` directory:
+3. **Configure Environment Files**: Update the environment-specific `.env` files in the `environments/` directory:
    - `environments/.env.dev` - Development environment configuration
    - `environments/.env.test` - Test environment configuration
    - `environments/.env.prod` - Production environment configuration
 
-3. **Run the Workflow**:
+4. **Run the Workflow**:
    - Go to the "Actions" tab in your GitHub repository
    - Select "Deploy AKS Infrastructure" workflow
    - Click "Run workflow"
