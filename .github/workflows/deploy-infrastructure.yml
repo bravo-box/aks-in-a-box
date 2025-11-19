@@ -24,6 +24,10 @@ on:
         required: true
         type: boolean
         default: false
+  push:
+    branches:
+      - copilot/build-github-workflow-deployment
+
 
 permissions:
   id-token: write
