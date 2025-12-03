@@ -302,8 +302,14 @@ fi
     STORAGE_ACCOUNT_ID=$(run_az_command "az storage account show -n '$SA_NAME' -g '$RESOURCE_GROUP' --query 'id' -o tsv" "Failed to get Storage Account ID")
     KEYVAULT_ID=$(run_az_command "az keyvault show -n '$KV_NAME' -g '$RESOURCE_GROUP' --query 'id' -o tsv" "Failed to get Key Vault ID")
 
-    # Get your current user principal ID
-    DEPLOYER_PRINCIPAL_ID=$(run_az_command "az ad signed-in-user show --query id -o tsv" "Failed to get current user principal ID")
+    # Get deployer principal ID - works for both signed-in user and service principal
+    if DEPLOYER_PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv 2>/dev/null); then
+      log_info "Using signed-in user principal ID for role assignments"
+    else
+      # Running as service principal (e.g., GitHub Actions)
+      DEPLOYER_PRINCIPAL_ID=$(run_az_command "az account show --query user.name -o tsv" "Failed to get service principal ID")
+      log_info "Using service principal for role assignments: $DEPLOYER_PRINCIPAL_ID"
+    fi
 
     # Assign Key Vault Crypto Officer role to Key Vault management for current signed in user
     run_az_command "az role assignment create --assignee '$DEPLOYER_PRINCIPAL_ID' --role 'Key Vault Crypto Officer' --scope '/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KV_NAME'" "Failed to assign Key Vault Crypto Officer role"
@@ -359,7 +365,14 @@ fi
     log_success "Key 'aks-cmk' created in Key Vault '$KV_NAME'"
 
 # --- GET PARAMETERS FOR ARM TEMPLATE ---
-    CREATED_BY=$(run_az_command "az ad signed-in-user show --query displayName -o tsv" "Failed to get current user display name")
+    # Get creator name - works for both signed-in user and service principal
+    if CREATED_BY=$(az ad signed-in-user show --query displayName -o tsv 2>/dev/null); then
+      log_info "Created by: $CREATED_BY"
+    else
+      # Running as service principal (e.g., GitHub Actions)
+      CREATED_BY=$(run_az_command "az account show --query user.name -o tsv" "Failed to get service principal name")
+      log_info "Created by service principal: $CREATED_BY"
+    fi
     
     # Capture ProjectName from user
     while true; do
@@ -659,7 +672,13 @@ log_info "Assigning ACR Pull role to the UAMI for AKS ACR access..."
 log_info "Assigning ACR Push role to the current user for AKS ACR access..."
     # --- ACR PUSH ROLE ---
     # Get current user principal ID
-    CURRENT_USER_ID=$(run_az_command "az ad signed-in-user show --query id -o tsv" "Failed to get current user ID for ACR role assignment")
+    if CURRENT_USER_ID=$(az ad signed-in-user show --query id -o tsv 2>/dev/null); then
+      log_info "Assigning ACR roles to signed-in user"
+    else
+      # Running as service principal (e.g., GitHub Actions)
+      CURRENT_USER_ID=$(run_az_command "az account show --query user.name -o tsv" "Failed to get service principal ID for ACR role assignment")
+      log_info "Assigning ACR roles to service principal: $CURRENT_USER_ID"
+    fi
 
     # Assign ACR Push role to the current user
     run_az_command "az role assignment create --assignee '$CURRENT_USER_ID' --role 'AcrPush' --scope '$ACR_ID'" "Failed to assign AcrPush role to current user"
