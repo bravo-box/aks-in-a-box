@@ -466,7 +466,3 @@ You may be prompted to login in. Once you have logged in, you will be presented 
 Remember as this is a private cluster you cannot see the resources from the portal if you are connecting from a machine that outside of your network eg: a home machine that is not on VPN or if you are on a network that is not peered and routed correctly to the network in Azure.
 
 Next you would want to pull the repo for the splunk installation assets down to the jumpbox.
-
-```bash
-git clone https://github.com/bravo-box/splunk-on-aks.git
-```
