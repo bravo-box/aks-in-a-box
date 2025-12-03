@@ -91,7 +91,20 @@ validate_params() {
 }
 
 load_env() {
+    local AUTO_LOAD="${1:-false}"
+    
     if [ -f "$ENV_FILE_NAME" ]; then
+        # If auto-load is enabled, automatically load parameters
+        if [[ "$AUTO_LOAD" == "true" ]]; then
+            set -a
+            source "$ENV_FILE_NAME"
+            set +a
+            echo "Environment variables loaded from $ENV_FILE_NAME (auto-load enabled)"
+            LOADED_ENV="true"
+            return 0
+        fi
+        
+        # Otherwise, prompt the user
         while true; do
             read -rp "There are saved parameters from a previous run, would you like me to load those? (y/n): " response
             response=$(echo "$response" | tr '[:upper:]' '[:lower:]')

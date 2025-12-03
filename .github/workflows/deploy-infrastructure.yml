@@ -1,0 +1,179 @@
+name: Deploy AKS Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+      cloud_type:
+        description: 'Azure Cloud Type'
+        required: true
+        type: choice
+        options:
+          - AzureCloud
+          - AzureUSGovernment
+        default: AzureUSGovernment
+      auto_approve:
+        description: 'Auto-approve deployment (skip manual confirmation)'
+        required: true
+        type: boolean
+        default: false
+  push:
+    branches:
+      - copilot/build-github-workflow-deployment
+
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to dev
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load environment configuration
+        id: load-env
+        run: |
+          ENV_FILE="environments/.env.dev"
+          
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "Error: Environment file $ENV_FILE not found"
+            exit 1
+          fi
+          
+          echo "Loading configuration from $ENV_FILE"
+          
+          # Read the env file and export variables
+          while IFS= read -r line || [ -n "$line" ]; do
+            # Skip comments and empty lines
+            if [[ ! "$line" =~ ^[[:space:]]*# ]] && [[ -n "$line" ]]; then
+              # Remove leading/trailing whitespace
+              line=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+              
+              # Export variable if it's not empty
+              if [[ -n "$line" ]]; then
+                export "$line"
+                # Also set as output for later steps
+                var_name=$(echo "$line" | cut -d'=' -f1)
+                var_value=$(echo "$line" | cut -d'=' -f2-)
+                echo "$var_name=$var_value" >> $GITHUB_OUTPUT
+              fi
+            fi
+          done < "$ENV_FILE"
+          
+          # Override CLOUD_ENV with workflow input
+          export CLOUD_ENV="AzureUSGovernment"
+          echo "CLOUD_ENV=AzureUSGovernment" >> $GITHUB_OUTPUT
+          
+          echo "Configuration loaded successfully"
+
+      - name: Set Azure Cloud
+        run: |
+          echo "Setting Azure cloud to: AzureUSGovernment"
+          az cloud set --name "AzureUSGovernment"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets[format('AZURE_CREDENTIALS_DEV')] }}
+          enable-AzPSSession: false
+          environment: "AzureUSGovernment"
+
+      - name: Prepare environment file for deployment
+        run: |
+          # Create a temporary env file for the deployment script
+          ENV_FILE="./.temp.infra.env"
+          
+          # Copy the environment configuration
+          cp "environments/.env.dev" "$ENV_FILE"
+          
+          # Override CLOUD_ENV in the env file
+          sed -i "s/^CLOUD_ENV=.*/CLOUD_ENV=AzureUSGovernment/" "$ENV_FILE"
+          
+          echo "Environment file prepared for deployment"
+
+      - name: Validate prerequisites
+        run: |
+          echo "Validating Azure subscription and permissions..."
+          az account show
+          
+          # Check if logged in
+          if ! az account show &>/dev/null; then
+            echo "Error: Not logged in to Azure"
+            exit 1
+          fi
+          
+          echo "Azure subscription validation successful"
+
+      - name: Deploy infrastructure
+        env:
+          ADMIN_PASSWORD: ${{ secrets.JUMPBOX_ADMIN_PASSWORD }}
+          AUTO_APPROVE: true
+        run: |
+          # Make the deployment script executable
+          echo "Making deployment script executable"
+          chmod +x ./scripts/deploy_infra.sh
+          echo "Deployment script is now executable"
+          
+          # The script will read from ./.temp.infra.env which we prepared
+          # Export the admin password and auto-approve setting
+          echo "Setting environment variables for deployment"
+          export ADMIN_PASSWORD="${{ secrets.JUMPBOX_ADMIN_PASSWORD }}"
+          export AUTO_APPROVE="true"
+          echo "Environment variables set"
+          
+          # Run the deployment script
+          # The script sources the .temp.infra.env file we created
+          echo "Starting infrastructure deployment..."  
+          ./scripts/deploy_infra.sh --load-saved-parameters --azure-environment AzureUSGovernment --admin-password $ADMIN_PASSWORD --auto-approve --default-infra-parameters
+          echo "Infrastructure deployment completed"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cloud Type**: AzureUSGovernment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Auto Approve**: true" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "infra.parameters.json" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Generated Parameters" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat infra.parameters.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-artifacts-dev
+          path: |
+            infra.parameters.json
+            .temp.infra.env
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Remove sensitive files
+          rm -f .temp.infra.env
+          echo "Cleanup completed"
