@@ -80,18 +80,18 @@ jobs:
           
           echo "Configuration loaded successfully"
 
+      - name: Set Azure Cloud
+        run: |
+          echo "Setting Azure cloud to: AzureUSGovernment"
+          az cloud set --name "AzureUSGovernment"
+          az account show
+
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets[format('AZURE_CREDENTIALS_DEV')] }}
           enable-AzPSSession: false
           environment: "AzureUSGovernment"
-
-      - name: Set Azure Cloud
-        run: |
-          echo "Setting Azure cloud to: AzureUSGovernment"
-          az cloud set --name "AzureUSGovernment"
-          az account show
 
       - name: Prepare environment file for deployment
         run: |
@@ -139,7 +139,7 @@ jobs:
           # Run the deployment script
           # The script sources the .temp.infra.env file we created
           echo "Starting infrastructure deployment..."  
-          ./scripts/deploy_infra.sh
+          ./scripts/deploy_infra.sh --load-saved-parameters --azure-environment AzureUSGovernment --admin-password $ADMIN_PASSWORD --auto-approve --default-infra-parameters
           echo "Infrastructure deployment completed"
 
       - name: Deployment summary
