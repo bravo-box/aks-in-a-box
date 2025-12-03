@@ -144,29 +144,72 @@ To execute any task:
 Throughout this readme, the az cli commands that you can run to do the manual configs. We have also provided a full bash script that will build the entire infrastructure for you.
 
 The deploy_infra.sh can create a Resource Group for the prerequisites, Key Vault, Storage Account and User Assigned Managed Identity (UAMI). The bash script will also assign the necessary roles to the UAMI. Once the prereqs are complete the bash script will build the parameter file and deploy the ARM template (infra.json).
-Should you decide to use the bash file (recommended approach):
+
+#### Basic Usage
 
 ```bash
 chmod +x ./scripts/deploy_infra.sh
 ./scripts/deploy_infra.sh
 ```
 
-You will be prompted for the following, you can chose not to deploy the RG, KV, Storage Account and UAMI. You will need to provide details of them and they will need to be in the same resource group.
+#### Command-Line Parameters
 
-1. The cloud you are using, AzureCloud or AzureUSGovernment
-2. The location of the resources, use the name of the location not the display name. eg: westus or usgovvirginia. Note that this should be the same as the vNet that you are going to be building in.
+The script supports several command-line parameters for automation and customization:
+
+```bash
+./scripts/deploy_infra.sh [OPTIONS]
+```
+
+**Available Options:**
+
+- `--load-saved-parameters` - Automatically load saved parameters from a previous run without prompting
+- `--azure-environment <AzureCloud|AzureUSGovernment>` - Specify the Azure cloud environment
+- `--admin-password <password>` - Provide jumpbox admin password (must be at least 12 characters)
+- `--auto-approve` - Skip confirmation prompts and automatically proceed with deployment
+- `--default-infra-parameters` - Use default template and generate parameters from inputs (skip parameter file prompt)
+- `--infra-parameter-file <path>` - Specify a custom infrastructure parameter file path
+
+**Examples:**
+
+```bash
+# Fully automated deployment with all parameters
+./scripts/deploy_infra.sh \
+  --load-saved-parameters \
+  --azure-environment AzureCloud \
+  --admin-password "MySecurePassword123!" \
+  --auto-approve \
+  --default-infra-parameters
+
+# Use saved parameters with custom parameter file
+./scripts/deploy_infra.sh \
+  --load-saved-parameters \
+  --azure-environment AzureUSGovernment \
+  --infra-parameter-file ./my-custom-params.json
+
+# Interactive deployment with pre-configured environment
+./scripts/deploy_infra.sh --azure-environment AzureCloud
+```
+
+#### Interactive Prompts
+
+When running without parameters, you will be prompted for the following. You can choose not to deploy the RG, KV, Storage Account and UAMI - you will need to provide details of existing resources, and they must be in the same resource group:
+
+1. The cloud you are using: AzureCloud or AzureUSGovernment
+2. The location of the resources (use the name, not display name - e.g., westus or usgovvirginia). Note: should be the same as the vNet location
 3. Resource Group for the KeyVault, Storage Account and UAMI
-4. KeyVault name - it will append a 10 digit random number to the end of the name eg: kv-test entered will become kv-testabc123de90
-5. Storage Account name - same as above, it will append the 10 digit random number. Note storage accounts can only accecpt alpah numeric, no special characters.
-6. User Assigned Managed Identity (UAMI). You can chose to use an existing UAMI if you have one
-7. Project name - this is name that will be used to name all resources in this deployment. Should be greater than 5 characters and no spaces or special characters eg: alpha
-8. Existing vNet name (we will detect the resource group name and present the subnets and address space that are already in the vNet)
-9. Enter the IP address space for the cluster. By default this deployment will provision a /27. You only need to enter the x.x.x.x eg: 10.0.1.0.
-10. Enter the username for your jumpboxes
-11. Enter the password for the jumboxes
-12. Group ID from Entra. This is a group that will be used to manage access to the AKS Cluster. You can get this from Entra ID
-13. Tag Cost Center, if you dont use press enter and it will assign n/a
-14. Tag Env, this is Dev, Test, Prod. If you dont use tags then enter to skip it will add n/a
+4. KeyVault name - it will append a 10 digit random number to the end (e.g., kv-test becomes kv-testabc123de90)
+5. Storage Account name - same as above, it will append the 10 digit random number. Note: storage accounts only accept alphanumeric characters, no special characters
+6. User Assigned Managed Identity (UAMI) - you can choose to use an existing UAMI if available
+7. Project name - this name will be used to name all resources in this deployment. Must be 5 characters or less, no spaces or special characters (e.g., alpha)
+8. Existing vNet name (the script will detect the resource group name and present the subnets and address space already in the vNet)
+9. IP address space for the cluster. By default this deployment provisions a /27. You only need to enter x.x.x.x (e.g., 10.0.1.0)
+10. Username for your jumpboxes
+11. Password for the jumpboxes (at least 12 characters)
+12. Group ID from Entra - this group will manage access to the AKS Cluster. Get this from Entra ID
+13. Tag Cost Center - if you don't use tags, press enter and it will assign n/a
+14. Tag Env - Dev, Test, or Prod. If you don't use tags, press enter and it will add n/a
+
+**Note:** The script automatically locates the ARM template file (`template/infra.json`) relative to its location, so it works regardless of where you run it from (repository root, scripts directory, devcontainer, etc.).
 
 ## Manual Deployment
 
