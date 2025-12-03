@@ -15,6 +15,68 @@
 
 set -e
 
+# --- PARSE COMMAND LINE ARGUMENTS ---
+LOAD_SAVED_PARAMS="false"
+AZURE_ENVIRONMENT=""
+ADMIN_PASSWORD=""
+AUTO_APPROVE="false"
+DEFAULT_INFRA_PARAMS="false"
+INFRA_PARAMETER_FILE=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --load-saved-parameters)
+      LOAD_SAVED_PARAMS="true"
+      shift
+      ;;
+    --azure-environment)
+      if [[ -n "$2" && "$2" != --* ]]; then
+        AZURE_ENVIRONMENT="$2"
+        shift 2
+      else
+        echo "Error: --azure-environment requires a value (AzureCloud or AzureUSGovernment)"
+        exit 1
+      fi
+      ;;
+    --admin-password)
+      if [[ -n "$2" && "$2" != --* ]]; then
+        ADMIN_PASSWORD="$2"
+        shift 2
+      else
+        echo "Error: --admin-password requires a value (at least 12 characters)"
+        exit 1
+      fi
+      ;;
+    --auto-approve)
+      AUTO_APPROVE="true"
+      shift
+      ;;
+    --default-infra-parameters)
+      DEFAULT_INFRA_PARAMS="true"
+      shift
+      ;;
+    --infra-parameter-file)
+      if [[ -n "$2" && "$2" != --* ]]; then
+        INFRA_PARAMETER_FILE="$2"
+        shift 2
+      else
+        echo "Error: --infra-parameter-file requires a value (path to parameter file)"
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--load-saved-parameters] [--azure-environment <AzureCloud|AzureUSGovernment>] [--admin-password <password>] [--auto-approve] [--default-infra-parameters] [--infra-parameter-file <path>]"
+      exit 1
+      ;;
+  esac
+done
+
+# Validate admin password if provided via parameter
+if [[ -n "$ADMIN_PASSWORD" && ${#ADMIN_PASSWORD} -lt 12 ]]; then
+  echo "Error: --admin-password must be at least 12 characters long"
+  exit 1
+fi
+
 # --- SOURCE MODULES ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIABLE_MODULE_FILE="${SCRIPT_DIR}/modules/variable_mgmt.sh"
@@ -50,7 +112,7 @@ source "$ERROR_HANDLING_FILE"
 trap 'error_handler ${LINENO}' ERR
 
 init_log_file
-load_env
+load_env "$LOAD_SAVED_PARAMS"
 
 # --- DEFAULT VARIABLES ---
 SPLUNK_IMAGE="${SPLUNK_IMAGE:-docker.io/splunk/splunk:9.4.5}"
@@ -65,10 +127,27 @@ OPERATOR_TAG="${OPERATOR_IMAGE#*/}"  # Removes first part before first "/"
 log_heading " Azure Subscription Deployment Script"
 
 # --- SELECT AZURE CLOUD ---
-if [[ -n "$CLOUD_ENV" ]]; then
+# Check if parameter was provided and is valid
+if [[ -n "$AZURE_ENVIRONMENT" ]]; then
+  if [[ "$AZURE_ENVIRONMENT" == "AzureCloud" || "$AZURE_ENVIRONMENT" == "AzureUSGovernment" ]]; then
+    CLOUD_ENV="$AZURE_ENVIRONMENT"
+    log_info "Using Azure environment from parameter: $CLOUD_ENV"
+    az cloud set --name "$CLOUD_ENV"
+    set_variable "CLOUD_ENV" "$CLOUD_ENV"
+  else
+    log_info "Invalid --azure-environment value: $AZURE_ENVIRONMENT"
+    log_info "Valid options are: AzureCloud, AzureUSGovernment"
+    log_info "Falling back to interactive selection."
+    AZURE_ENVIRONMENT=""
+  fi
+fi
+
+# Check if already set from saved parameters
+if [[ -z "$AZURE_ENVIRONMENT" && -n "$CLOUD_ENV" ]]; then
   log_info "Using existing Azure environment: $CLOUD_ENV"
   az cloud set --name "$CLOUD_ENV"
-else
+elif [[ -z "$AZURE_ENVIRONMENT" ]]; then
+  # Interactive prompt if no parameter or saved value
   log_info "Select your Azure environment:"
   select CLOUD_ENV in "AzureCloud" "AzureUSGovernment"; do
     case $CLOUD_ENV in
@@ -396,11 +475,37 @@ fi
   fi
 
 # --- GET TEMPLATE INFO ---
-TEMPLATE_FILE=$(prompt_variable "Enter full path to ARM template file (.json): " "TEMPLATE_FILE")
-read -rp "Enter full path to parameters file (.json) [Press Enter to skip, if you skip we will create based on your input]: " PARAM_FILE
-if [[ -n "$PARAM_FILE" && ! -f "$PARAM_FILE" ]]; then
-  log_info "⚠️ Parameter file not found. Ignoring and deploying without parameters."
+# Find template file relative to script directory
+TEMPLATE_FILE="${SCRIPT_DIR}/../template/infra.json"
+
+if [[ ! -f "$TEMPLATE_FILE" ]]; then
+  log_error "Template file not found: $TEMPLATE_FILE"
+  log_error "Expected location: <repo-root>/template/infra.json"
+  exit 1
+fi
+
+log_info "Using template file: $TEMPLATE_FILE"
+
+# Handle parameter file based on flags
+if [[ "${DEFAULT_INFRA_PARAMS}" == "true" ]]; then
   PARAM_FILE=""
+  log_info "Will generate parameters file from inputs"
+else
+  # Check if parameter file was provided via command line
+  if [[ -n "$INFRA_PARAMETER_FILE" ]]; then
+    PARAM_FILE="$INFRA_PARAMETER_FILE"
+    if [[ ! -f "$PARAM_FILE" ]]; then
+      log_error "Parameter file not found: $PARAM_FILE"
+      exit 1
+    fi
+    log_info "Using parameter file from command line: $PARAM_FILE"
+  else
+    read -rp "Enter full path to parameters file (.json) [Press Enter to skip, if you skip we will create based on your input]: " PARAM_FILE
+    if [[ -n "$PARAM_FILE" && ! -f "$PARAM_FILE" ]]; then
+      log_info "⚠️ Parameter file not found. Ignoring and deploying without parameters."
+      PARAM_FILE=""
+    fi
+  fi
 fi
 
 DEPLOYMENT_NAME=$(prompt_variable "Enter a name for this deployment [Press Enter for default]: " "DEPLOYMENT_NAME")
