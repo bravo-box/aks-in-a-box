@@ -84,7 +84,6 @@ jobs:
         run: |
           echo "Setting Azure cloud to: AzureUSGovernment"
           az cloud set --name "AzureUSGovernment"
-          az account show
 
       - name: Azure Login
         uses: azure/login@v2
