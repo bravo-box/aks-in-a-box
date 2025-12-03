@@ -8,7 +8,14 @@ run_az_command() {
   # Capture stdout while allowing stderr to display on screen
   # This preserves visual indicators and progress messages
   log_to_file "Executing command: $cmd"
-  output=$(eval "$cmd" 2>/dev/tty)
+  
+  # Check if we have a TTY available (interactive environment)
+  if [[ -t 0 ]] && [[ -e /dev/tty ]]; then
+    output=$(eval "$cmd" 2>/dev/tty)
+  else
+    # Non-interactive environment (like GitHub Actions), redirect to stderr
+    output=$(eval "$cmd" 2>&2)
+  fi
   exit_code=$?
   
   if [[ $exit_code -ne 0 ]]; then
